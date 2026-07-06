@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: tcp-simulator-nginx-dev
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend:/var/www/tcp-simulator:ro
+    depends_on:
+      - backend
+    networks:
+      - tcp-simulator-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tcp-simulator-backend-dev
+    volumes:
+      - ./backend:/app
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    command: flask run --host=0.0.0.0 --port=5000
+    networks:
+      - tcp-simulator-network
+
+networks:
+  tcp-simulator-network:
+    driver: bridge
