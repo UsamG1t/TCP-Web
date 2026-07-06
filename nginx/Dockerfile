@@ -7,6 +7,6 @@ RUN rm /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/conf.d/
 
 # Copy frontend static files
-COPY --from=frontend /app/ /var/www/tcp-simulator/
+COPY frontend/ /var/www/tcp-simulator/
 
 EXPOSE 80 443
