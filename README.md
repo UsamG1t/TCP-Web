@@ -1,6 +1,14 @@
-# TCP Sliding Window Simulator
+# TCP Sliding-Window Simulator
 
-An interactive web-based simulator for demonstrating TCP protocol behavior with sliding window mechanisms. The simulator visualizes packet transmission between sender and receiver, supports multiple TCP congestion control algorithms, and provides both an interactive GUI and a REST API for programmatic access.
+An educational simulator of TCP sliding-window flow control and congestion-control
+algorithms. The backend computes a whole transmission run as a **discrete-event
+trace** (instantly, in virtual time); the frontend plays that trace back as an
+animated time-sequence diagram, a sliding-window map, and a congestion-window
+chart.
+
+Live layout when deployed: the new UI is served at `/latest/`, the original
+single-file version at `/old`, and the REST API is reachable both through the
+reverse proxy at `/api/` and directly on port `5000`.
 
 ---
 
@@ -8,554 +16,568 @@ An interactive web-based simulator for demonstrating TCP protocol behavior with 
 
 - [Overview](#overview)
 - [Architecture](#architecture)
-- [Features](#features)
-- [Deployment](#deployment)
-- [REST API](#rest-api)
-- [Protocols Workflow](#protocols-workflow)
-  - [Classic Sliding Window](#classic-sliding-window)
-  - [TCP Reno](#tcp-reno)
-- [Interactive Controls](#interactive-controls)
-- [Statistics](#statistics)
-- [Configuration Parameters](#configuration-parameters)
+- [How It Works](#how-it-works)
+  - [Event-driven vs. real-time](#event-driven-vs-real-time)
+  - [The three faces: `/old`, `/latest`, `/api`](#the-three-faces-old-latest-api)
+- [REST API Reference](#rest-api-reference)
+  - [`GET /health`](#get-health)
+  - [`GET /schema`](#get-schema)
+  - [`POST /simulate`](#post-simulate)
+  - [Continuing a run (hybrid mode)](#continuing-a-run-hybrid-mode)
+  - [Event schema](#event-schema)
+- [Source Layout](#source-layout)
+- [Sliding Window Protocols](#sliding-window-protocols)
+  - [Common model](#common-model)
+  - [Retransmission timeout (RFC 6298)](#retransmission-timeout-rfc-6298)
+  - [Classic](#classic)
+  - [Tahoe](#tahoe)
+  - [Reno](#reno)
+  - [CUBIC](#cubic)
+- [Running Locally](#running-locally)
+- [Deploying to Your Own VPS](#deploying-to-your-own-vps)
+  - [Prerequisites](#prerequisites)
+  - [Manual deployment](#manual-deployment)
+  - [Where ports and paths are configured](#where-ports-and-paths-are-configured)
+  - [Automated deployment (GitHub Actions)](#automated-deployment-github-actions)
+- [Package Versions](#package-versions)
+- [References](#references)
+- [License](#license)
 
 ---
 
 ## Overview
 
-The TCP Sliding Window Simulator provides a real-time visualization of how TCP manages reliable data transfer between two endpoints. Two horizontal lanes represent the sender (top) and receiver (bottom). Data packets travel downward from sender to receiver, while ACK packets travel upward from receiver to sender. Each packet occupies its own horizontal slot based on its sequence number, preventing overlap and ensuring clear visibility.
+The project demonstrates how the size of a TCP sender's window evolves as segments
+are sent, acknowledged, delayed, and lost. Four congestion-control algorithms are
+implemented — **Classic**, **Tahoe**, **Reno**, and **CUBIC** — over a common
+sliding-window model with cumulative acknowledgements, duplicate-ACK detection,
+fast retransmit, and an adaptive retransmission timer.
 
-The timeline is horizontally scrollable — users can navigate forward and backward to observe the entire transmission history. The viewport automatically follows active transmissions, shifting left as packets progress beyond two-thirds of the visible area.
+The system has three deployable parts:
+
+- a **backend** (Python / Flask) that exposes a small REST API and contains the
+  discrete-event simulation engine;
+- a **frontend** (Svelte / Vite) that replays a computed trace;
+- a **reverse proxy** (nginx) that serves both frontends and proxies the API.
 
 ---
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────┐
-│  Browser (Frontend)                   │
-│  - Interactive visualization            │
-│  - Real-time packet animation           │
-│  - Parameter controls                   │
-└─────────────┬───────────────────────────┘
-              │ HTTP / REST
-┌─────────────▼───────────────────────────┐
-│  NGINX (Reverse Proxy)                  │
-│  - Static file serving                  │
-│  - API routing to backend               │
-└─────────────┬───────────────────────────┘
-              │
-┌─────────────▼───────────────────────────┐
-│  Python Flask (Backend)                 │
-│  - REST API endpoints                   │
-│  - Headless simulation engine           │
-└─────────────────────────────────────────┘
+```mermaid
+flowchart LR
+  Browser -->|/latest/| WEB[nginx web image]
+  Browser -->|/old| WEB
+  Browser -->|/api/*| WEB
+  Browser -->|:5000| API[backend Flask + gunicorn]
+  WEB -->|proxy /api -> :5000| API
+  API --> ENGINE[discrete-event engine]
+  subgraph web image
+    WEB
+    LATEST[Svelte build /latest]
+    OLD[legacy tcp_simulator.html /old]
+  end
 ```
 
-| Component | Technology | File |
-|-----------|-----------|------|
-| Frontend | HTML5 / CSS3 / Vanilla JS | `tcp_simulator.html` |
-| Backend | Python 3.11 + Flask + Flask-CORS | `app.py` |
-| Proxy | NGINX | `nginx.conf` |
-| Orchestration | Docker Compose | `docker-compose.yml` |
+Two container images are built:
+
+- **`backend`** — `python:3.12-slim` running `gunicorn app:app` on port `5000`.
+- **`web`** — a multi-stage image: a `node:20-alpine` stage builds the Svelte app,
+  and an `nginx:alpine` stage serves the build under `/latest`, the legacy page
+  under `/old`, and proxies `/api` to the backend.
 
 ---
 
-## Features
+## How It Works
 
-### Interactive Visualization
-- **Two separate lanes**: sender (top, blue window) and receiver (bottom, green window)
-- **Vertical packet movement**: data packets fly downward, ACK packets fly upward
-- **Horizontal slot allocation**: each packet has its own slot based on sequence number — no overlap
-- **Scrollable timeline**: mouse wheel or drag to navigate the entire transmission history
-- **Auto-follow**: viewport automatically scrolls to keep active transmissions visible
-- **Click-to-drop**: click any flying packet to manually drop it and observe protocol recovery
+### Event-driven vs. real-time
 
-### Supported Protocols
-- **Classic Sliding Window** — fixed-size window, no congestion control
-- **TCP Tahoe** — Slow Start + Congestion Avoidance, timeout-based recovery
-- **TCP Reno** — Tahoe + Fast Retransmit + Fast Recovery (3 dup ACKs)
-- **TCP CUBIC** — cubic growth function for high-bandwidth networks
-- **TCP BBR** — Bottleneck Bandwidth and RTT-based model
+The **new** engine (`/api`, served to `/latest`) is a **discrete-event
+simulation**. It maintains a virtual clock and a priority queue of future events
+(`send`, `data arrival`, `ACK arrival`, `RTO`). It pops the earliest event,
+mutates state, schedules new events, and repeats until the virtual clock reaches
+the requested duration. A 30-second run is computed in a fraction of a second,
+because nothing waits on wall-clock time.
 
-### Retransmission Modes
-- **Go-Back-N** (default): on timeout, retransmit ALL unacknowledged packets starting from the lost one
-- **Selective**: on timeout, retransmit ONLY the lost packet (configurable via UI)
+By contrast, the **original** version (`/old`) advances in **real time**: its
+client-side animation uses actual timers, so a 30-second scenario takes 30 seconds
+to watch. (The first-generation backend prototype behaved the same way, using
+`time.sleep`.) Moving to a discrete-event model is what makes the new API instant,
+deterministic (seeded), and reproducible.
 
-### Real-time Controls
-- Start / Pause / Reset simulation
-- Speed multiplier (0.1x – 3.0x)
-- All TCP parameters editable in real-time
-- Event log panel with color-coded messages
+Because the engine is a pure function of `(config, seed, resume_state)`, the
+backend keeps **no per-session state**. To *continue* a run, the client sends back
+the `checkpoint` it received earlier — see
+[Continuing a run](#continuing-a-run-hybrid-mode).
+
+### The three faces: `/old`, `/latest`, `/api`
+
+| Path        | What it serves                                            | Notes |
+|-------------|-----------------------------------------------------------|-------|
+| `/latest/`  | New Svelte trace player                                   | Built with `base=/latest/`, calls the API at `/api` |
+| `/old`      | Original self-contained `tcp_simulator.html`              | Client-side, real-time animation; kept for reference |
+| `/api/*`    | REST API through the nginx reverse proxy                  | Prefix `/api` is stripped before proxying |
+| `:5000`     | REST API exposed directly on the port                    | Same API, for curl / scripting |
 
 ---
 
-## Deployment
+## REST API Reference
 
-### Option 1: Docker Compose (Recommended)
+Base URL in production: `http://<host>/api` (proxied) or `http://<host>:5000`
+(direct). In local development the frontend uses `http://localhost:5000`.
+
+### `GET /health`
+
+Liveness probe.
 
 ```bash
-# Clone or download the project files
-cd tcp-sliding-window-simulator
-
-# Start all services
-docker-compose up -d
-
-# Access the simulator
-open http://localhost
-# or http://tcpsw.usamg1t.com (with DNS configured)
+curl -s localhost:5000/health
+# {"status": "ok"}
 ```
 
-### Option 2: Manual Setup
+### `GET /schema`
+
+Returns defaults, valid ranges, protocols, and retransmission modes. The frontend
+builds its parameter form from this response.
 
 ```bash
-# 1. Install Python dependencies
+curl -s localhost:5000/schema
+```
+
+```json
+{
+  "numeric": {
+    "packetTime": { "default": 2500, "min": 100, "max": 10000 },
+    "ackTime":    { "default": 1500, "min": 50,  "max": 5000  },
+    "sendWindow": { "default": 4,    "min": 1,   "max": 64    },
+    "recvWindow": { "default": 8,    "min": 1,   "max": 64    },
+    "packetLoss": { "default": 5,    "min": 0,   "max": 50    },
+    "ackLoss":    { "default": 2,    "min": 0,   "max": 50    },
+    "timeout":    { "default": 8000, "min": 200, "max": 20000 },
+    "bandwidth":  { "default": 10,   "min": 1,   "max": 100   }
+  },
+  "protocols": ["classic", "tahoe", "reno", "cubic"],
+  "retransmitModes": ["gobackn", "selective"],
+  "duration": { "default": 30, "min": 1, "max": 300 }
+}
+```
+
+### `POST /simulate`
+
+Runs a fresh simulation and returns the full event trace, a resumable checkpoint,
+and summary statistics.
+
+Request body:
+
+| Field          | Type    | Required | Meaning |
+|----------------|---------|----------|---------|
+| `config`       | object  | no       | Any subset of the schema parameters; missing values use defaults |
+| `duration`     | number  | no       | Seconds of *additional* virtual time to simulate (default 30) |
+| `seed`         | integer | no       | PRNG seed for reproducibility (default 1) |
+| `resume_state` | object  | no       | A `checkpoint` from a previous call (see below) |
+
+```bash
+curl -s -X POST localhost:5000/simulate \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "config": { "protocol": "reno", "packetLoss": 8, "bandwidth": 10,
+                "packetTime": 300, "ackTime": 150, "sendWindow": 2 },
+    "duration": 10,
+    "seed": 42
+  }'
+```
+
+Response shape:
+
+```json
+{
+  "events": [
+    { "t": 0.0,   "type": "cwnd_change", "value": 2, "phase": "slow-start", "reason": "init" },
+    { "t": 0.0,   "type": "packet_send", "seq": 0, "retransmit": false },
+    { "t": 300.0, "type": "packet_deliver", "seq": 0 },
+    { "t": 450.0, "type": "ack_deliver", "ack": 1 }
+  ],
+  "checkpoint": { "...": "opaque, send back to continue" },
+  "stats": { "sent": 50, "delivered": 47, "lost": 3, "ackSent": 47,
+             "ackDelivered": 46, "ackLost": 1, "retransmits": 1 }
+}
+```
+
+Validation errors return `400` with an `{"error": "..."}` body; an oversized trace
+returns `413`.
+
+### Continuing a run (hybrid mode)
+
+To extend a run, send the previous `checkpoint` as `resume_state`. The new
+`config` may differ — the continuation reflects the new parameters from that point
+on, while packets already in flight keep their decided fate. This is what powers
+"Continue with new parameters" in the UI.
+
+```bash
+# 1) fresh run, save the response
+curl -s -X POST localhost:5000/simulate -H 'Content-Type: application/json' \
+  -d '{"config":{"protocol":"reno","packetLoss":8},"duration":10,"seed":42}' > run1.json
+
+# 2) continue for 10 more seconds, switching to CUBIC with heavier loss
+jq -c '{config:{protocol:"cubic",packetLoss:20},duration:10,resume_state:.checkpoint}' run1.json \
+  | curl -s -X POST localhost:5000/simulate -H 'Content-Type: application/json' -d @-
+```
+
+The continuation's events start at the virtual time where the first run ended;
+the client concatenates them into one continuous timeline.
+
+### Event schema
+
+Every event carries `t` (virtual milliseconds) and a `type`:
+
+| Type               | Payload            | Meaning |
+|--------------------|--------------------|---------|
+| `packet_send`      | `seq`, `retransmit`| A data segment leaves the sender |
+| `fast_retransmit`  | `seq`              | Segment retransmitted after 3 duplicate ACKs |
+| `packet_deliver`   | `seq`              | Segment arrives at the receiver |
+| `packet_drop`      | `seq`              | Segment lost in the network |
+| `ack_send`         | `ack`              | Receiver emits a cumulative ACK |
+| `ack_deliver`      | `ack`              | ACK arrives at the sender |
+| `ack_drop`         | `ack`              | ACK lost |
+| `dup_ack`          | `ack`, `count`     | Duplicate ACK observed by the sender |
+| `timeout`          | `seq`              | Retransmission timer fired |
+| `cwnd_change`      | `value`, `phase`, `reason` | Congestion window changed |
+| `ssthresh_change`  | `value`            | Slow-start threshold changed |
+| `phase_change`     | `phase`            | slow-start / congestion-avoidance / fast-recovery |
+
+---
+
+## Source Layout
+
+```
+backend/
+  app.py                 Flask API: /health, /schema, /simulate
+  requirements.txt
+  Dockerfile
+  engine/
+    prng.py              Deterministic splitmix64 PRNG (serializable state)
+    rto.py               Adaptive RTO estimator (RFC 6298)
+    config.py            Config dataclass + parameter schema + validation
+    congestion.py        Congestion-control strategies (classic/tahoe/reno/cubic)
+    core.py              Discrete-event engine + simulate() entry point
+
+frontend/                New UI (Svelte + Vite)
+  index.html
+  vite.config.js         base is '/' in dev, '/latest/' in the production build
+  src/
+    App.svelte           Layout + API orchestration
+    lib/
+      api.js             getSchema / runSimulation / continueSimulation
+      trace.js           Trace processing: flights + state timeline (pure, tested)
+      player.js          Playback store: virtual clock, play/pause/seek/speed
+      layout.js          Shared time axis for the ladder and the chart
+    components/
+      ConfigPanel.svelte     Parameter form (built from /schema)
+      StateStrip.svelte      Protocol / phase / cwnd / counters readout
+      SlidingWindow.svelte   Sequence-space window strip
+      Ladder.svelte          Time-sequence (ladder) diagram
+      WindowChart.svelte     cwnd / ssthresh over time
+      Transport.svelte       Play / pause / speed / scrub
+      LogPanel.svelte        Event log synced to the playhead
+
+legacy/
+  tcp_simulator.html     Original single-file simulator (served at /old)
+
+nginx/
+  Dockerfile             Multi-stage: build Svelte, then nginx runtime
+  nginx.conf             Routes /latest, /old, /api
+
+docker-compose.yml       Local build
+docker-compose.prod.yml  Pull prebuilt images from GHCR (used on the server)
+.github/workflows/deploy.yml
+```
+
+Key backend building blocks:
+
+- **`engine/core.py`** holds the `Engine` class (the event queue, sender, receiver,
+  loss injection, loss detection) and `simulate()`, the pure function the API calls.
+  The `checkpoint()` / `resume()` pair serializes and restores *all* state,
+  including the pending event queue and the PRNG, which is what makes stateless
+  "continue" possible.
+- **`engine/congestion.py`** isolates each algorithm behind a small `CC` interface
+  (`on_new_ack`, `on_triple_dup_ack`, `on_timeout`). Congestion control is entirely
+  sender-side; the receiver logic lives in the engine and is shared by all four.
+- **`engine/rto.py`** implements the adaptive timer described below.
+
+On the frontend, `lib/trace.js` is deliberately free of Svelte and DOM so it can be
+unit-tested; it converts the flat event list into paired "flights" (for the ladder)
+and a per-event state timeline (for the readouts, chart, and window strip).
+
+---
+
+## Sliding Window Protocols
+
+This section describes the algorithms as implemented in the **latest** engine,
+which is the authoritative one. Congestion control affects the **sender**; the
+**receiver** behaves the same across all four protocols and depends only on the
+retransmission mode.
+
+### Common model
+
+**What we emulate.** A one-way data channel with propagation delay `packetTime`
+(ms) and a return channel with delay `ackTime` (ms), a bottleneck that serializes
+segments at `bandwidth` segments/second, and independent stochastic loss of data
+(`packetLoss` %) and ACKs (`ackLoss` %). Sequence numbers count segments.
+
+**Sender (common behaviour).**
+
+1. Keeps `cwnd` (congestion window), `ssthresh` (slow-start threshold),
+   `sendBase` (oldest unacknowledged segment), and `nextSeq` (next segment to
+   send).
+2. May send while `nextSeq - sendBase < min(cwnd, recvWindow)` — i.e. the effective
+   window is the smaller of congestion window and the receiver's advertised window
+   (flow control). New segments are spaced by the link serialization time.
+3. On a new **cumulative** ACK: advances `sendBase`, takes an RTT sample (unless the
+   acknowledged segment was retransmitted — see Karn's rule), updates `cwnd`
+   according to the protocol, and restarts the RTO timer.
+4. On the **third duplicate** ACK: performs a **fast retransmit** of `sendBase` and
+   applies the protocol's loss reaction.
+5. On **RTO expiry**: applies the protocol's timeout reaction, backs off the timer,
+   and retransmits. In **go-back-n** the sender rewinds `nextSeq` to `sendBase` and
+   resends the window; in **selective repeat** it resends only `sendBase`.
+
+**Receiver (common behaviour).**
+
+1. Tracks `expected`, the next in-order sequence number.
+2. On an in-order segment: advances `expected` (absorbing any buffered contiguous
+   segments) and sends a cumulative ACK for the new `expected`.
+3. On an out-of-order segment: in **go-back-n** it is discarded and the receiver
+   re-sends an ACK for the current `expected` (a duplicate ACK); in **selective
+   repeat** it is buffered if it fits within `recvWindow`, and a duplicate ACK is
+   still sent.
+4. ACKs themselves may be lost according to `ackLoss`.
+
+The sliding-window mechanics and Go-Back-N / Selective-Repeat behaviour follow the
+classic reliable-transport model (see RFC 9293 and the textbook references).
+
+### Retransmission timeout (RFC 6298)
+
+The RTO is adaptive, following **RFC 6298**. The sender keeps a smoothed RTT
+(`SRTT`) and its variation (`RTTVAR`):
+
+```
+first sample R:   SRTT = R;  RTTVAR = R/2
+later samples R':  RTTVAR = (1 - 1/4)*RTTVAR + 1/4*|SRTT - R'|
+                   SRTT   = (1 - 1/8)*SRTT   + 1/8*R'
+RTO = SRTT + max(G, 4 * RTTVAR)          # clamped to [RTO_min, RTO_max]
+```
+
+Two rules matter for correctness:
+
+- **Karn's algorithm** — RTT is never sampled from a retransmitted segment, because
+  it is ambiguous which copy an ACK answers (Karn & Partridge, 1987).
+- **Exponential backoff** — when the timer fires, the RTO is doubled before the
+  retransmission.
+
+The `timeout` parameter seeds the initial RTO; it then converges toward the
+channel's real RTT.
+
+### Classic
+
+A fixed-window baseline with **no congestion control**. Useful for contrast.
+
+- **Sender:** `cwnd` is pinned to `sendWindow` and never changes. On loss the
+  sender still retransmits (reliability is preserved), but neither `cwnd` nor
+  `ssthresh` react to duplicate ACKs or timeouts.
+- **Receiver:** standard cumulative-ACK behaviour.
+
+### Tahoe
+
+Slow start, AIMD congestion avoidance, and fast retransmit — but **no fast
+recovery**. Any loss collapses the window to 1. Based on Jacobson (1988); see
+RFC 5681 for the modern statement.
+
+- **Sender:**
+  - *Slow start* (`cwnd < ssthresh`): `cwnd += 1` per new ACK (roughly doubling per
+    RTT).
+  - *Congestion avoidance* (`cwnd ≥ ssthresh`): `cwnd += 1/cwnd` per new ACK
+    (about +1 per RTT).
+  - *On 3 duplicate ACKs*: `ssthresh = max(cwnd/2, 2)`, `cwnd = 1`, re-enter slow
+    start, fast-retransmit the missing segment.
+  - *On timeout*: identical reaction — `ssthresh = max(cwnd/2, 2)`, `cwnd = 1`,
+    slow start.
+- **Receiver:** common cumulative-ACK behaviour.
+
+### Reno
+
+Tahoe plus **fast recovery**: three duplicate ACKs halve the window instead of
+resetting it, keeping the pipe partially full. See RFC 5681 and the NewReno
+refinement in RFC 6582.
+
+- **Sender:**
+  - Slow start and congestion avoidance as in Tahoe.
+  - *On 3 duplicate ACKs*: `ssthresh = max(cwnd/2, 2)`, `cwnd = ssthresh + 3`
+    (window inflation), enter *fast recovery*, fast-retransmit.
+  - *While in fast recovery*: each further duplicate ACK inflates `cwnd` by 1 and
+    may release a new segment.
+  - *On the next new ACK*: deflate to `cwnd = ssthresh` and return to congestion
+    avoidance.
+  - *On timeout*: fall back to `cwnd = 1` and slow start (same as Tahoe).
+- **Receiver:** common cumulative-ACK behaviour.
+
+### CUBIC
+
+A window-growth function that is cubic in the time since the last loss, designed
+for high-bandwidth, long-delay paths. Standardised in **RFC 9438** (which obsoletes
+the earlier informational RFC 8312).
+
+- **Sender:**
+  - Slow start as usual.
+  - *Congestion avoidance*: let `t` be the seconds elapsed since the last reduction
+    and `Wmax` the window at that reduction. With `C = 0.4` and `β = 0.7`,
+    `K = ((Wmax * (1 - β)) / C)^(1/3)` and the target is
+    `W(t) = C * (t - K)^3 + Wmax`; `cwnd` is advanced toward that target.
+  - *On 3 duplicate ACKs*: `Wmax = cwnd`, `cwnd = cwnd * β` (a multiplicative
+    decrease of 0.7, not one-half), enter fast recovery, fast-retransmit.
+  - *On timeout*: `cwnd = 1`, slow start.
+- **Receiver:** common cumulative-ACK behaviour.
+
+> **Implementation note.** CUBIC's window shape is faithful, but the *Reno-friendly
+> region* of RFC 9438 (which keeps CUBIC at least as aggressive as Reno on
+> short-RTT paths) is not yet modelled. This is an honest simplification for
+> teaching, not a full standards-compliant CUBIC.
+
+---
+
+## Running Locally
+
+Two processes: the API and the frontend dev server.
+
+**Backend:**
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+python app.py                # http://localhost:5000
+```
 
-# 2. Start the backend
-python app.py
+**Frontend:**
 
-# 3. Configure NGINX using the provided nginx.conf
-# 4. Place tcp_simulator.html in /var/www/tcp-simulator/
-# 5. Restart NGINX
+```bash
+cd frontend
+cp .env.example .env          # VITE_API_BASE=http://localhost:5000
+npm install
+npm run dev                   # http://localhost:5173
+```
+
+Or run the whole stack the way it runs in production, with Docker:
+
+```bash
+docker compose up --build
+# http://localhost/latest/   new UI
+# http://localhost/old       legacy page
+# http://localhost/api/schema  API via proxy
+# http://localhost:5000/schema API direct
 ```
 
 ---
 
-## REST API
+## Deploying to Your Own VPS
 
-### `GET /parameters`
+This walks through a manual deployment from a clean server to a running system.
 
-Returns the current simulation configuration.
+### Prerequisites
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "packetTime": 1000,
-    "ackTime": 500,
-    "sendWindow": 4,
-    "recvWindow": 8,
-    "protocol": "reno",
-    "packetLoss": 5,
-    "ackLoss": 2,
-    "timeout": 3000,
-    "bandwidth": 10,
-    "retransmitMode": "gobackn"
-  }
-}
+- A VPS with Docker Engine and the Docker Compose plugin installed.
+- Git.
+- Port `80` (and `5000` if you want the API exposed directly) open in both the
+  host firewall and any provider-side firewall.
+- No other service already bound to port `80` (a system nginx, for example, must
+  be stopped: `sudo systemctl stop nginx && sudo systemctl disable nginx`).
+
+### Manual deployment
+
+```bash
+# 1. Clone
+sudo mkdir -p /path/to/repo/dir && sudo chown "$USER" /path/to/repo/dir
+git clone https://github.com/UsamG1t/TCP-Web.git /path/to/repo/dir
+cd /path/to/repo/dir
+
+# 2. Build the images locally and start
+docker compose up --build -d
+
+# 3. Verify
+curl -s localhost:5000/health          # {"status":"ok"}
+curl -sI localhost/latest/ | head -1    # 200 OK
+curl -sI localhost/old | head -1        # 302 -> /old/
+docker compose ps
 ```
+
+Then browse to:
+
+- `http://<VPS_IP>/latest/` — the new simulator
+- `http://<VPS_IP>/old` — the legacy page
+- `http://<VPS_IP>/api/schema` — the API through the proxy
+- `http://<VPS_IP>:5000/schema` — the API directly on its port
+
+To update later: `git pull && docker compose up --build -d`.
+
+### Where ports and paths are configured
+
+| To change...                        | Edit |
+|-------------------------------------|------|
+| Host ports (`80`, `5000`)           | `docker-compose.yml` / `docker-compose.prod.yml` → `ports:` |
+| URL paths (`/latest`, `/old`, `/api`) | `nginx/nginx.conf` → `location` blocks |
+| The frontend's base path            | `nginx/Dockerfile` → `ENV VITE_BASE` (build arg) |
+| The API URL the frontend calls      | `nginx/Dockerfile` → `ENV VITE_API_BASE` (build) / `frontend/.env` (dev) |
+| Backend workers / bind              | `backend/Dockerfile` → `gunicorn` command |
+
+For example, to serve the new UI at `/app` instead of `/latest`, change the
+`location /latest/` block in `nginx.conf`, the `COPY --from=build ... /latest/`
+line in `nginx/Dockerfile`, and `ENV VITE_BASE=/app/`.
 
 ---
 
-### `POST /set`
+## Package Versions
 
-Updates simulation parameters. Invalid values return an error with valid options.
+**Backend**
 
-**Request body:**
-```json
-{
-  "packetTime": 1000,
-  "ackTime": 500,
-  "sendWindow": 4,
-  "recvWindow": 8,
-  "protocol": "reno",
-  "packetLoss": 5,
-  "ackLoss": 2,
-  "timeout": 3000,
-  "bandwidth": 10,
-  "retransmitMode": "gobackn"
-}
-```
+| Package     | Version   |
+|-------------|-----------|
+| Python      | 3.12      |
+| Flask       | >= 3.0    |
+| flask-cors  | >= 4.0    |
+| gunicorn    | >= 21.2   |
 
-**Valid `protocol` values:** `classic`, `tahoe`, `reno`, `cubic`, `bbr`
-**Valid `retransmitMode` values:** `gobackn`, `selective`
+**Frontend**
 
-**Error response (invalid protocol):**
-```json
-{
-  "success": false,
-  "error": "Invalid protocol",
-  "validValues": ["classic", "tahoe", "reno", "cubic", "bbr"]
-}
-```
+| Package                     | Version    |
+|-----------------------------|------------|
+| Node.js                     | 20         |
+| Svelte                      | ^4.2.18    |
+| Vite                        | ^5.3.4     |
+| @sveltejs/vite-plugin-svelte| ^3.1.1     |
+
+**Container base images:** `python:3.12-slim`, `node:20-alpine`, `nginx:alpine`.
 
 ---
 
-### `POST /play`
+## References
 
-Runs a headless simulation for the specified duration and returns statistics.
+Standards:
 
-**Request body:**
-```json
-{
-  "duration": 30
-}
-```
+- RFC 9293 — *Transmission Control Protocol (TCP)*. <https://www.rfc-editor.org/rfc/rfc9293.html>
+- RFC 5681 — *TCP Congestion Control* (slow start, congestion avoidance, fast retransmit/recovery). <https://www.rfc-editor.org/rfc/rfc5681.html>
+- RFC 6582 — *The NewReno Modification to TCP's Fast Recovery Algorithm*. <https://www.rfc-editor.org/rfc/rfc6582.html>
+- RFC 6298 — *Computing TCP's Retransmission Timer*. <https://www.rfc-editor.org/rfc/rfc6298.html>
+- RFC 9438 — *CUBIC for Fast and Long-Distance Networks*. <https://www.rfc-editor.org/rfc/rfc9438.html>
+- RFC 8312 — *CUBIC for Fast Long-Distance Networks* (obsoleted by RFC 9438). <https://www.rfc-editor.org/rfc/rfc8312.html>
 
-**Response:**
-```json
-{
-  "success": true,
-  "duration": 30,
-  "statistics": {
-    "packetsSent": 150,
-    "packetsReceived": 142,
-    "acksSent": 142,
-    "acksReceived": 138,
-    "packetLossPercent": 5.33,
-    "ackLossPercent": 2.82,
-    "windowHistory": [
-      {"timestamp": 1719830400000, "value": 4.0},
-      {"timestamp": 1719830405000, "value": 5.0}
-    ],
-    "ssthreshHistory": [
-      {"timestamp": 1719830400000, "value": 64.0},
-      {"timestamp": 1719830420000, "value": 32.0}
-    ]
-  }
-}
-```
+Papers:
+
+- V. Jacobson, *Congestion Avoidance and Control*, SIGCOMM 1988. <https://ee.lbl.gov/papers/congavoid.pdf>
+- P. Karn, C. Partridge, *Improving Round-Trip Time Estimates in Reliable Transport Protocols*, SIGCOMM 1987. <https://dl.acm.org/doi/10.1145/55483.55484>
 
 ---
 
-## Protocols Workflow
+## License
 
-This section describes the detailed behavior of each supported protocol as implemented in the simulator.
-
----
-
-### Classic Sliding Window
-
-The simplest form of sliding window protocol with **no congestion control**. It demonstrates the basic mechanics of window-based flow control without any adaptation to network conditions.
-
-#### State Variables
-| Variable | Description |
-|----------|-------------|
-| `sendBase` | First unacknowledged sequence number |
-| `nextSeqNum` | Next sequence number to send |
-| `expectedSeqNum` | Next expected sequence number at receiver |
-| `cwnd` | Congestion window size (fixed, never changes) |
-
-#### Sender Behavior
-1. The sender maintains a fixed-size window (`cwnd` = initial `sendWindow`).
-2. Packets are sent sequentially while `nextSeqNum < sendBase + cwnd`.
-3. Each packet has an **individual timeout timer**.
-4. When a packet is sent, a timer is started. If the timer expires before the corresponding ACK is received, a **timeout** occurs.
-
-#### Timeout Handling
-- On timeout: **no congestion control actions** are performed.
-- The window size (`cwnd`) remains unchanged.
-- **Go-Back-N retransmission**: all unacknowledged packets starting from `sendBase` are retransmitted.
-- `nextSeqNum` is reset to `sendBase`.
-
-#### ACK Handling
-- ACKs are **cumulative**: `ACK=N` confirms receipt of all packets `0` through `N`.
-- On receiving `ACK=N`: `sendBase` is set to `N + 1`, and the window slides forward.
-- Duplicate ACKs (ACK < `sendBase`) are ignored.
-
-#### Receiver Behavior
-- The receiver expects packets in strict sequential order.
-- On receiving packet `N` where `N == expectedSeqNum`:
-  - `expectedSeqNum` is incremented.
-  - Any buffered out-of-order packets are processed.
-  - A cumulative `ACK = expectedSeqNum - 1` is sent.
-- On receiving packet `N` where `N > expectedSeqNum`:
-  - The packet is buffered.
-  - A **duplicate ACK** for `expectedSeqNum - 1` is sent.
-- On receiving packet `N` where `N < expectedSeqNum`:
-  - The packet is a duplicate; a cumulative ACK is sent anyway.
-
-#### Key Characteristics
-- **No Slow Start, no Congestion Avoidance**.
-- Window size never changes regardless of losses.
-- Simplest model for understanding basic sliding window mechanics.
-
----
-
-### TCP Reno
-
-TCP Reno is the most widely deployed TCP congestion control algorithm. It combines **Slow Start**, **Congestion Avoidance**, **Fast Retransmit**, and **Fast Recovery** to adaptively control the transmission rate.
-
-#### State Variables
-| Variable | Description |
-|----------|-------------|
-| `cwnd` | Congestion window size (dynamic) |
-| `ssthresh` | Slow start threshold |
-| `sendBase` | First unacknowledged sequence number |
-| `nextSeqNum` | Next sequence number to send |
-| `expectedSeqNum` | Next expected sequence number at receiver |
-| `phase` | Current phase: `slow-start`, `congestion-avoidance`, or `fast-recovery` |
-| `dupAckCount` | Count of consecutive duplicate ACKs |
-| `acksInCurrentWindow` | Count of ACKs received in the current congestion window |
-
-#### Phase 1: Slow Start
-
-**Entry condition:** Initial connection or after a timeout.
-
-**Behavior:**
-- `cwnd` starts at the configured `sendWindow` (typically 1–4 MSS).
-- `ssthresh` starts at `max(sendWindow × 4, 64)`.
-- For **every new ACK received**, `cwnd` is increased by **1**.
-- This results in **exponential growth**: window doubles every RTT.
-
-```
-On new ACK during Slow Start:
-    cwnd ← cwnd + 1
-    if cwnd ≥ ssthresh:
-        phase ← "congestion-avoidance"
-        acksInCurrentWindow ← 0
-```
-
-**Example:**
-```
-RTT 0: cwnd = 4, send packets 0,1,2,3
-        → receive ACKs for 0,1,2,3
-RTT 1: cwnd = 8, send packets 4,5,6,7,8,9,10,11
-        → receive ACKs for 4..11
-RTT 2: cwnd = 16, ...
-```
-
----
-
-#### Phase 2: Congestion Avoidance
-
-**Entry condition:** `cwnd` reaches `ssthresh` during Slow Start, or exiting Fast Recovery.
-
-**Behavior:**
-- Growth is **linear** rather than exponential.
-- The sender counts ACKs received (`acksInCurrentWindow`).
-- After receiving ACKs for **all packets in the current window** (i.e., `acksInCurrentWindow >= floor(cwnd)`), `cwnd` is increased by **1**.
-- This means the window grows by approximately **1 MSS per RTT**.
-
-```
-On new ACK during Congestion Avoidance:
-    acksInCurrentWindow ← acksInCurrentWindow + 1
-    if acksInCurrentWindow ≥ floor(cwnd):
-        cwnd ← cwnd + 1
-        acksInCurrentWindow ← 0
-```
-
-**Example:**
-```
-cwnd = 5.0
-Send packets 20,21,22,23,24
-Receive ACKs for 20,21,22,23,24 → acksInCurrentWindow = 5
-5 ≥ 5 → cwnd = 6.0, acksInCurrentWindow = 0
-
-Next round: send packets 25,26,27,28,29,30 (6 packets)
-Receive 6 ACKs → acksInCurrentWindow = 6
-6 ≥ 6 → cwnd = 7.0
-```
-
----
-
-#### Timeout Handling
-
-A timeout is the most severe signal of network congestion. It occurs when an individual packet timer expires before its ACK is received.
-
-**Important:** The sender does **NOT** react to packet loss detected in the channel (e.g., a packet being dropped by the network or manually by the user). The sender only reacts when:
-1. A **timeout** fires, or
-2. **Three duplicate ACKs** are received.
-
-**On timeout:**
-```
-ssthresh ← max(floor(cwnd / 2), 2)
-cwnd ← 1
-phase ← "slow-start"
-acksInCurrentWindow ← 0
-dupAckCount ← 0
-```
-
-**Go-Back-N retransmission:**
-- All unacknowledged packets from `sendBase` to `nextSeqNum - 1` are retransmitted.
-- `nextSeqNum` is reset to `sendBase`.
-- All old in-flight packets are marked as lost and their timers cleared.
-
-**Example:**
-```
-Before timeout: cwnd = 16, ssthresh = 64, sendBase = 20, nextSeqNum = 36
-Packet #22 times out
-After timeout:  cwnd = 1,  ssthresh = 8
-                Go-Back-N: retransmit packets 20,21,22,...,35
-                nextSeqNum = 20
-```
-
----
-
-#### Fast Retransmit (3 Duplicate ACKs)
-
-Fast Retransmit allows the sender to detect packet loss **without waiting for a timeout**, based on duplicate ACKs from the receiver.
-
-**Mechanism:**
-- The receiver sends a **duplicate ACK** for `expectedSeqNum - 1` whenever it receives an out-of-order packet.
-- The sender counts duplicate ACKs for the same sequence number.
-- On the **third duplicate ACK** (`dupAckCount == 3`):
-
-```
-// Fast Retransmit + Fast Recovery entry
-ssthresh ← max(floor(cwnd / 2), 2)
-cwnd ← ssthresh + 3
-phase ← "fast-recovery"
-```
-
-**Why `cwnd = ssthresh + 3`?**
-- The `+3` accounts for the three packets that have already left the network (the ones that triggered the duplicate ACKs).
-- This "inflates" the window so the sender can continue transmitting new packets while waiting for the retransmission to succeed.
-
-**Fast Retransmit:**
-- The lost packet (sequence number = `lastDupAck + 1`) is retransmitted **immediately**.
-- Only this single packet is retransmitted (not Go-Back-N).
-
----
-
-#### Phase 3: Fast Recovery
-
-**Entry condition:** Third duplicate ACK received.
-
-**Behavior:**
-- The sender remains in Fast Recovery until a **new ACK** (non-duplicate) is received.
-- For **each additional duplicate ACK** received beyond the third:
-  ```
-  cwnd ← cwnd + 1
-  ```
-  This inflation allows the sender to keep the pipe full by sending new packets as ACKs arrive.
-
-**Exit condition: New ACK received**
-```
-// Deflate the window
-cwnd ← ssthresh
-phase ← "congestion-avoidance"
-acksInCurrentWindow ← 0
-```
-
-**Example of full Fast Recovery cycle:**
-```
-1. Sender transmits packets 10,11,12,13,14,15,16 (cwnd = 7)
-2. Packet #12 is lost
-3. Packets 13,14,15,16 arrive at receiver out of order
-4. Receiver sends: ACK=11, ACK=11, ACK=11, ACK=11 (4 dup ACKs for 11)
-
-5. On 3rd dup ACK (ACK=11):
-   ssthresh = floor(7/2) = 3
-   cwnd = 3 + 3 = 6
-   phase = "fast-recovery"
-   Fast Retransmit packet #12
-
-6. On 4th dup ACK (ACK=11):
-   cwnd = 6 + 1 = 7
-   (sender can now send one new packet, e.g., #17)
-
-7. Retransmitted packet #12 arrives at receiver
-8. Receiver now has 12,13,14,15,16 → sends cumulative ACK=16
-
-9. On new ACK=16:
-   cwnd = ssthresh = 3
-   phase = "congestion-avoidance"
-```
-
----
-
-#### Complete State Machine Diagram
-
-```
-                    ┌─────────────────┐
-                    │   Slow Start    │
-                    │   cwnd = 1      │
-                    │   (after TO)    │
-                    └────────┬────────┘
-                             │ new ACK: cwnd += 1
-                             │
-              cwnd < ssthresh│              cwnd >= ssthresh
-         ┌───────────────────┘              └───────────────────┐
-         │                                                    │
-         ▼                                                    ▼
-┌─────────────────┐                              ┌─────────────────────────┐
-│   Slow Start    │                              │  Congestion Avoidance   │
-│  (exponential)  │                              │    (linear growth)      │
-│  cwnd += 1/ACK  │                              │  cwnd += 1 per window   │
-└─────────────────┘                              └───────────┬─────────────┘
-                                                             │
-                                    ┌────────────────────────┼────────────────────────┐
-                                    │                        │                        │
-                                    │ timeout                │ 3× dup ACK             │
-                                    ▼                        ▼                        │
-                           ┌─────────────┐          ┌─────────────────┐               │
-                           │   Timeout   │          │ Fast Retransmit │               │
-                           │  ssthresh/=2│          │ ssthresh = cwnd/2│              │
-                           │  cwnd = 1   │          │ cwnd = ssthresh+3│               │
-                           │  GBN retrans│          │  retransmit 1 pkt│               │
-                           └──────┬──────┘          └────────┬────────┘               │
-                                  │                          │                        │
-                                  │                          ▼                        │
-                                  │                 ┌─────────────────┐               │
-                                  │                 │  Fast Recovery  │               │
-                                  │                 │  cwnd += 1/dup  │               │
-                                  │                 └────────┬────────┘               │
-                                  │                          │                        │
-                                  │                          │ new ACK                │
-                                  │                          ▼                        │
-                                  │                 ┌─────────────────┐               │
-                                  │                 │      Exit       │               │
-                                  │                 │  cwnd = ssthresh│               │
-                                  │                 │  phase = CA     │───────────────┘
-                                  │                 └─────────────────┘
-                                  │
-                                  └────────────────────────────────────────────────────►
-                                                          (back to Slow Start)
-```
-
----
-
-## Interactive Controls
-
-| Control | Description |
-|---------|-------------|
-| **Packet transmission time** | Duration (ms) for a data packet to travel from sender to receiver |
-| **ACK transmission time** | Duration (ms) for an ACK to travel from receiver to sender |
-| **Initial send window** | Starting `cwnd` value |
-| **Initial receive window** | Starting receiver window size |
-| **Protocol** | `classic`, `tahoe`, `reno`, `cubic`, `bbr` |
-| **Packet loss %** | Probability of random packet loss in the forward channel |
-| **ACK loss %** | Probability of random ACK loss in the reverse channel |
-| **Timeout** | Timer duration (ms) for individual packet retransmission |
-| **Bandwidth** | Maximum packets per second the sender attempts to inject |
-| **Retransmit mode** | `gobackn` (all from lost) or `selective` (only lost) |
-| **Speed** | Simulation speed multiplier (0.1x – 3.0x) |
-
----
-
-## Statistics
-
-The top bar displays real-time statistics:
-
-| Statistic | Description |
-|-----------|-------------|
-| Packets sent | Total data packets transmitted by sender |
-| Packets received | Total data packets successfully received |
-| ACKs sent | Total ACK packets transmitted by receiver |
-| ACKs received | Total ACK packets successfully received by sender |
-| Packets lost | Total data packets lost (channel + manual) |
-| Current window | Current `cwnd` value |
-| ssthresh | Current slow start threshold |
-| Phase | Current congestion control phase |
-
----
-
-## Configuration Parameters
-
-All parameters can be set via the UI or the REST API `/set` endpoint.
-
-| Parameter | Type | Range | Default | Description |
-|-----------|------|-------|---------|-------------|
-| `packetTime` | integer | 100–10000 | 1000 | Data packet one-way latency (ms) |
-| `ackTime` | integer | 50–5000 | 500 | ACK packet one-way latency (ms) |
-| `sendWindow` | integer | 1–64 | 4 | Initial congestion window |
-| `recvWindow` | integer | 1–64 | 8 | Receiver window size |
-| `protocol` | string | enum | `reno` | Congestion control algorithm |
-| `packetLoss` | integer | 0–50 | 5 | Forward channel loss probability (%) |
-| `ackLoss` | integer | 0–50 | 2 | Reverse channel loss probability (%) |
-| `timeout` | integer | 500–20000 | 3000 | Per-packet retransmission timeout (ms) |
-| `bandwidth` | integer | 1–100 | 10 | Maximum send attempts per second |
-| `retransmitMode` | string | `gobackn`/`selective` | `gobackn` | Retransmission strategy |
-
+This project is licensed under the **GNU General Public License v3.0 (GPLv3)**.
+See the [LICENSE](LICENSE) file for the full text.
