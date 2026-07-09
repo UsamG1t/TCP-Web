@@ -1,12 +1,9 @@
 services:
-  nginx:
-    image: ghcr.io/usamg1t/tcp-web/nginx:latest
-    container_name: tcp-simulator-nginx
+  web:
+    image: ghcr.io/usamg1t/tcp-web/web:latest
+    container_name: tcp-simulator-web
     ports:
       - "80:80"
-      - "443:443"
-    volumes:
-      - nginx-logs:/var/log/nginx
     depends_on:
       - backend
     restart: unless-stopped
@@ -16,8 +13,8 @@ services:
   backend:
     image: ghcr.io/usamg1t/tcp-web/backend:latest
     container_name: tcp-simulator-backend
-    expose:
-      - "5000"
+    ports:
+      - "5000:5000"          # REST API exposed directly on the port
     restart: unless-stopped
     networks:
       - tcp-simulator-network
@@ -25,6 +22,3 @@ services:
 networks:
   tcp-simulator-network:
     driver: bridge
-
-volumes:
-  nginx-logs:

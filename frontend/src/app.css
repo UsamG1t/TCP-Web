@@ -1,0 +1,78 @@
+:root {
+  /* instrument palette — deep slate, quiet chrome, semantic event colors */
+  --ink:      #0E1420;
+  --panel:    #151D2C;
+  --panel-2:  #1B2536;
+  --line:     #26324A;
+  --line-soft:#1E293C;
+  --text:     #C9D4E4;
+  --muted:    #6E7F98;
+
+  --signal:   #46C7F2;  /* playhead / primary action */
+  --ok:       #3FB98A;  /* packet delivered */
+  --loss:     #FF5C6C;  /* packet / ack dropped */
+  --ack:      #F2B45A;  /* acknowledgement */
+  --rtx:      #B98CFF;  /* retransmission */
+  --timeout:  #FF8A3D;  /* RTO fired */
+
+  --font-ui:   'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --r: 6px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app { min-height: 100%; }
+
+h1, h2, h3 { font-weight: 500; margin: 0; }
+
+button {
+  font-family: var(--font-ui);
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: border-color .12s, background .12s, color .12s;
+}
+button:hover:not(:disabled) { border-color: var(--signal); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+input[type="number"], select {
+  font-family: var(--font-mono);
+  color: var(--text);
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 6px 8px;
+  width: 100%;
+}
+input:focus, select:focus { outline: none; border-color: var(--signal); }
+
+input[type="range"] { accent-color: var(--signal); }
+
+.mono { font-family: var(--font-mono); }
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

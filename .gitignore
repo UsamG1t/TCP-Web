@@ -1,1 +1,4 @@
+frontend/node_modules/*
 *~
+backend/engine/__pycache__/*
+
