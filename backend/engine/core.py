@@ -44,9 +44,18 @@ class Engine:
         self.timer_gen = 0
         self.timer_running = False
 
-        # CUBIC
-        self.cubic_wmax = 0.0
-        self.cubic_epoch = 0.0
+        # CUBIC state (RFC 9438 §4.1.2). Kept on the engine so it lands in the
+        # checkpoint and survives a stateless resume.
+        self.cubic = {
+            "wmax": 0.0,          # W_max
+            "t_epoch": 0.0,       # t_epoch (ms, virtual)
+            "cwnd_epoch": 0.0,    # cwnd at the start of the current CA stage
+            "cwnd_prior": 0.0,    # cwnd when ssthresh was last set
+            "w_est": 0.0,         # W_est (Reno-friendly estimate)
+            "k": 0.0,             # K
+            "epoch_started": False,
+            "after_congestion": False,   # next CA epoch follows a congestion event
+        }
 
         # output + stats
         self.events: list[dict] = []
@@ -61,6 +70,15 @@ class Engine:
     # ---- helpers -------------------------------------------------------
     def eff_window(self) -> float:
         return min(self.cwnd, self.cfg.recvWindow)
+
+    def flight_size(self) -> int:
+        """Segments sent but not yet acknowledged (RFC 9438 §4.6 uses this)."""
+        return max(self.next_seq - self.send_base, 0)
+
+    def srtt_s(self) -> float:
+        """Smoothed RTT in seconds; falls back to the nominal path RTT."""
+        ms = self.rto.srtt if self.rto.has_sample else (self.cfg.packetTime + self.cfg.ackTime)
+        return ms / 1000.0
 
     def emit(self, etype: str, **payload) -> None:
         self.events.append({"t": round(self.now, 2), "type": etype, **payload})
@@ -166,6 +184,7 @@ class Engine:
             seg = self.in_flight.get(ack - 1)
             if seg and not seg["retransmitted"]:       # Karn: no sample on retransmits
                 self.rto.update(self.now - seg["send_time"])
+            segments_acked = ack - self.send_base      # RFC 9438 needs this (Fig. 4)
             for s in range(self.send_base, ack):
                 self.in_flight.pop(s, None)
             self.send_base = ack
@@ -178,7 +197,7 @@ class Engine:
                 self.set_cwnd(self.ssthresh, reason="fr-exit")
                 self.set_phase("congestion-avoidance")
             else:
-                self.cc.on_new_ack(self, ack)
+                self.cc.on_new_ack(self, ack, segments_acked)
             self._schedule_send(self.now)
 
         elif ack == self.send_base:                    # duplicate ACK
@@ -245,7 +264,7 @@ class Engine:
             "send_pending": self.send_pending,
             "rto": asdict(self.rto), "timer_gen": self.timer_gen,
             "timer_running": self.timer_running,
-            "cubic_wmax": self.cubic_wmax, "cubic_epoch": self.cubic_epoch,
+            "cubic": dict(self.cubic),
             "expected": self.expected, "recv_buffer": sorted(self.recv_buffer),
             "stats": self.stats,
         }
@@ -269,7 +288,7 @@ class Engine:
         e.rto = RtoEstimator(**checkpoint["rto"])
         e.timer_gen = checkpoint["timer_gen"]
         e.timer_running = checkpoint["timer_running"]
-        e.cubic_wmax = checkpoint["cubic_wmax"]; e.cubic_epoch = checkpoint["cubic_epoch"]
+        e.cubic = dict(checkpoint.get("cubic", e.cubic))
         e.expected = checkpoint["expected"]
         e.recv_buffer = set(checkpoint["recv_buffer"])
         e.stats = checkpoint["stats"]

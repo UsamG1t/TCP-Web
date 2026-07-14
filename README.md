@@ -422,25 +422,46 @@ refinement in RFC 6582.
 
 ### CUBIC
 
-A window-growth function that is cubic in the time since the last loss, designed
-for high-bandwidth, long-delay paths. Standardised in **RFC 9438** (which obsoletes
-the earlier informational RFC 8312).
+A window-growth function that is cubic in the time since the last congestion
+event, designed for high-bandwidth, long-delay paths. Standardised in
+**RFC 9438** (Standards Track), which obsoletes the earlier informational
+RFC 8312. Constants: `C = 0.4`, `β_cubic = 0.7`, and
+`α_cubic = 3(1 − β)/(1 + β) ≈ 0.53`.
 
 - **Sender:**
-  - Slow start as usual.
-  - *Congestion avoidance*: let `t` be the seconds elapsed since the last reduction
-    and `Wmax` the window at that reduction. With `C = 0.4` and `β = 0.7`,
-    `K = ((Wmax * (1 - β)) / C)^(1/3)` and the target is
-    `W(t) = C * (t - K)^3 + Wmax`; `cwnd` is advanced toward that target.
-  - *On 3 duplicate ACKs*: `Wmax = cwnd`, `cwnd = cwnd * β` (a multiplicative
-    decrease of 0.7, not one-half), enter fast recovery, fast-retransmit.
-  - *On timeout*: `cwnd = 1`, slow start.
+  - *Slow start*: as in Reno (`cwnd += segments_acked` per new ACK). HyStart++
+    (§4.10) is not used; plain slow start is the permitted fallback.
+  - *Congestion avoidance* (§4.2, §4.4, §4.5): at the start of each CA stage the
+    sender fixes `t_epoch`, `cwnd_epoch`, `W_max`, and
+    `K = ∛((W_max − cwnd_epoch) / C)`. On every ACK it evaluates the cubic
+    function one RTT ahead,
+    `W_cubic(t + RTT) = C · (t + RTT − K)³ + W_max`, clamps the result to
+    `[cwnd, 1.5 · cwnd]`, and advances `cwnd += (target − cwnd) / cwnd`. Growth is
+    *concave* while `cwnd < W_max` (approaching the previous saturation point) and
+    *convex* afterwards (probing for more bandwidth).
+  - *Reno-friendly region* (§4.3): in parallel the sender maintains a Reno
+    estimate, `W_est += α_cubic · segments_acked / cwnd`, starting from
+    `cwnd_epoch`, with `α_cubic` switching to `1` once `W_est ≥ cwnd_prior`.
+    Whenever the cubic curve would grow more slowly than Reno, `cwnd` is set to
+    `W_est` instead — this keeps CUBIC no less aggressive than Reno on short-RTT
+    paths.
+  - *On 3 duplicate ACKs* (§4.6): `cwnd_prior = cwnd`,
+    `ssthresh = max(flight_size · β_cubic, 2)` (note the reduction is based on
+    **flight_size**, not `cwnd`, and the factor is 0.7 — not one half),
+    `cwnd = cwnd · β_cubic`, enter fast recovery, fast-retransmit. The next CA
+    stage then probes back toward `W_max = cwnd_prior`.
+  - *On timeout* (§4.8): `cwnd` collapses to 1 and the sender re-enters slow start
+    (as in Reno), but `ssthresh` is set with `β_cubic` rather than one half. The
+    first CA stage after a timeout uses `K = 0` and `W_max = cwnd` at CA entry
+    (§4.8, §4.10).
 - **Receiver:** common cumulative-ACK behaviour.
 
-> **Implementation note.** CUBIC's window shape is faithful, but the *Reno-friendly
-> region* of RFC 9438 (which keeps CUBIC at least as aggressive as Reno on
-> short-RTT paths) is not yet modelled. This is an honest simplification for
-> teaching, not a full standards-compliant CUBIC.
+> **Scope note.** *Fast convergence* (§4.7) is intentionally not implemented: it
+> only affects how several CUBIC flows share a bottleneck, and RFC 9438 states it
+> SHOULD be disabled for a single flow — which is exactly what this simulator
+> models. RTT-fairness and Reno-vs-CUBIC competition (§3.3, §5.1) are likewise out
+> of scope for a single-flow model, and the optional mechanisms PRR (RFC 6937) and
+> spurious-loss reversal (§4.9) are not used.
 
 ---
 
@@ -569,6 +590,8 @@ Standards:
 - RFC 6298 — *Computing TCP's Retransmission Timer*. <https://www.rfc-editor.org/rfc/rfc6298.html>
 - RFC 9438 — *CUBIC for Fast and Long-Distance Networks*. <https://www.rfc-editor.org/rfc/rfc9438.html>
 - RFC 8312 — *CUBIC for Fast Long-Distance Networks* (obsoleted by RFC 9438). <https://www.rfc-editor.org/rfc/rfc8312.html>
+- RFC 9406 — *HyStart++: Modified Slow Start for TCP*. <https://www.rfc-editor.org/rfc/rfc9406.html>
+- RFC 6937 — *Proportional Rate Reduction for TCP*. <https://www.rfc-editor.org/rfc/rfc6937.html>
 
 Papers:
 
