@@ -3,250 +3,226 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TCP Sliding Window Simulator</title>
+<title>TCP Sliding Window Simulator — интерактивная версия</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: #0f172a;
-    color: #e2e8f0;
-    min-height: 100vh;
-    overflow-x: hidden;
+    background: #0f172a; color: #e2e8f0; min-height: 100vh; overflow-x: hidden;
 }
-.header {
-    text-align: center;
-    padding: 20px;
-    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-    border-bottom: 2px solid #3b82f6;
-}
-.header h1 { font-size: 2rem; color: #60a5fa; text-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
-.header p { color: #94a3b8; margin-top: 5px; }
+
+.header { padding: 16px 20px; background: #1e293b; border-bottom: 1px solid #334155; }
+.header h1 { font-size: 1.3rem; }
+.header p { color: #94a3b8; font-size: 0.85rem; margin-top: 4px; }
+.header a { color: #60a5fa; }
 
 .controls-panel {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 15px;
-    padding: 20px;
-    background: #1e293b;
-    border-bottom: 1px solid #334155;
+    display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end;
+    padding: 14px 20px; background: #1e293b; border-bottom: 1px solid #334155;
 }
-.control-group {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    min-width: 150px;
-    flex: 1;
-}
-.control-group label { font-size: 0.85rem; color: #94a3b8; font-weight: 600; }
+.control-group { display: flex; flex-direction: column; gap: 4px; }
+.control-group label { font-size: 0.7rem; color: #94a3b8; }
 .control-group input, .control-group select {
-    padding: 8px 12px; border: 1px solid #475569; border-radius: 6px;
-    background: #0f172a; color: #e2e8f0; font-size: 0.9rem;
+    background: #0f172a; border: 1px solid #334155; color: #e2e8f0;
+    padding: 6px 8px; border-radius: 5px; font-size: 0.85rem; width: 120px;
 }
 .control-group input:focus, .control-group select:focus { outline: none; border-color: #3b82f6; }
 
-.btn-group { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.btn-group { display: flex; gap: 8px; margin-left: auto; }
 .btn {
-    padding: 10px 24px; border: none; border-radius: 8px;
-    font-size: 0.95rem; font-weight: 600; cursor: pointer;
-    transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer;
+    font-weight: 600; font-size: 0.85rem; color: #fff; transition: background .15s;
 }
-.btn-primary { background: #3b82f6; color: white; }
-.btn-primary:hover { background: #2563eb; }
-.btn-success { background: #10b981; color: white; }
-.btn-success:hover { background: #059669; }
-.btn-warning { background: #f59e0b; color: white; }
-.btn-warning:hover { background: #d97706; }
-.btn-danger { background: #ef4444; color: white; }
-.btn-danger:hover { background: #dc2626; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-success { background: #10b981; } .btn-success:hover { background: #059669; }
+.btn-warning { background: #f59e0b; } .btn-warning:hover { background: #d97706; }
+.btn-danger  { background: #ef4444; } .btn-danger:hover  { background: #dc2626; }
+.btn-primary { background: #3b82f6; } .btn-primary:hover { background: #2563eb; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.active { box-shadow: inset 0 0 0 2px #fff3; }
+
+.speed-control {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 20px; background: #172033; border-bottom: 1px solid #334155;
+    font-size: 0.85rem; color: #94a3b8;
+}
+.speed-control input[type=range] { width: 200px; accent-color: #3b82f6; }
 
 .stats-bar {
-    display: flex; gap: 20px; padding: 15px 20px;
-    background: #1e293b; border-bottom: 1px solid #334155; flex-wrap: wrap;
+    display: flex; gap: 18px; padding: 12px 20px; flex-wrap: wrap;
+    background: #1e293b; border-bottom: 1px solid #334155;
 }
-.stat-item { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
-.stat-item .stat-value { font-weight: bold; color: #60a5fa; font-size: 1.1rem; }
+.stat-item { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; }
 .stat-item .stat-label { color: #94a3b8; }
+.stat-item .stat-value { font-weight: bold; color: #60a5fa; font-size: 1rem; }
 
-/* ===== TIMELINE ===== */
-.timeline-outer {
-    position: relative; height: 500px; background: #0f172a;
-    overflow: hidden; user-select: none;
-}
+/* ===== TAPE ===== */
+.timeline-outer { position: relative; height: 460px; background: #0f172a; user-select: none; }
 .timeline-viewport {
-    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-    overflow-x: scroll; overflow-y: hidden; cursor: grab;
+    position: absolute; inset: 0; overflow-x: scroll; overflow-y: hidden; cursor: grab;
 }
-.timeline-viewport:active { cursor: grabbing; }
 .timeline-viewport::-webkit-scrollbar { height: 12px; }
 .timeline-viewport::-webkit-scrollbar-track { background: #1e293b; }
 .timeline-viewport::-webkit-scrollbar-thumb { background: #475569; border-radius: 6px; }
-.timeline-content {
-    position: relative; height: 100%; min-width: 100%;
-}
-.lane {
-    position: absolute; left: 0; height: 80px; width: 100%;
-}
-.sender-lane { top: 60px; }
-.receiver-lane { bottom: 60px; }
-.lane-label {
-    position: fixed; left: 20px; font-size: 0.85rem; font-weight: bold;
-    color: #94a3b8; z-index: 100; background: rgba(15, 23, 42, 0.9);
-    padding: 4px 12px; border-radius: 4px; border: 1px solid #334155;
-}
-.sender-label-fixed { top: 75px; }
-.receiver-label-fixed { bottom: 75px; }
-.lane-track {
-    position: absolute; left: 0; right: 0; height: 4px;
-    background: #334155; top: 50%; transform: translateY(-50%); border-radius: 2px;
-}
-.lane-window {
-    position: absolute; height: 30px; border: 2px solid; border-radius: 4px;
-    top: 50%; transform: translateY(-50%); opacity: 0.7; transition: all 0.3s ease; z-index: 5;
-}
-.sender-window { border-color: #3b82f6; background: rgba(59, 130, 246, 0.15); }
-.receiver-window { border-color: #10b981; background: rgba(16, 185, 129, 0.15); }
+.timeline-content { position: relative; height: 100%; min-width: 100%; }
 
+.lane { position: absolute; left: 0; right: 0; height: 80px; }
+.sender-lane { top: 90px; }
+.receiver-lane { bottom: 70px; }
+.lane-track {
+    position: absolute; left: 0; right: 0; height: 4px; top: 50%;
+    transform: translateY(-50%); background: #334155; border-radius: 2px;
+}
+.lane-label {
+    position: absolute; left: 14px; font-size: 0.78rem; font-weight: bold; color: #94a3b8;
+    z-index: 60; background: rgba(15,23,42,.92); padding: 4px 10px;
+    border-radius: 4px; border: 1px solid #334155;
+}
+.sender-label-fixed { top: 100px; }
+.receiver-label-fixed { bottom: 80px; }
+
+.lane-window {
+    position: absolute; height: 34px; border: 2px solid; border-radius: 5px;
+    top: 50%; transform: translateY(-50%); opacity: .75; z-index: 5;
+    transition: left .18s ease, width .18s ease;
+}
+.sender-window   { border-color: #3b82f6; background: rgba(59,130,246,.14); }
+.receiver-window { border-color: #10b981; background: rgba(16,185,129,.14); }
 .window-indicator {
-    position: absolute; top: -25px; font-size: 0.75rem; color: #60a5fa;
-    font-weight: bold; white-space: nowrap;
+    position: absolute; top: -22px; left: 0; font-size: .72rem;
+    color: #60a5fa; font-weight: bold; white-space: nowrap;
 }
-.ssthresh-indicator {
-    position: absolute; top: -40px; font-size: 0.7rem; color: #f59e0b;
-    font-weight: bold; white-space: nowrap;
-}
+.receiver-window .window-indicator { color: #34d399; }
 .phase-badge {
-    position: absolute; top: -55px; font-size: 0.7rem; padding: 2px 8px;
+    position: absolute; top: -42px; left: 0; font-size: .68rem; padding: 2px 8px;
     border-radius: 4px; font-weight: bold; white-space: nowrap;
 }
 .phase-slow-start { background: #f59e0b; color: #1e293b; }
-.phase-congestion-avoidance { background: #3b82f6; color: white; }
-.phase-fast-recovery { background: #8b5cf6; color: white; }
+.phase-congestion-avoidance { background: #3b82f6; color: #fff; }
+.phase-fast-recovery { background: #8b5cf6; color: #fff; }
 
-.grid-lines { position: absolute; left: 0; top: 0; bottom: 0; pointer-events: none; z-index: 1; }
-.grid-line { position: absolute; width: 1px; height: 100%; background: rgba(51, 65, 85, 0.3); }
-.grid-label { position: absolute; top: 50%; transform: translateY(-50%); font-size: 0.65rem; color: #475569; margin-left: 4px; }
+.grid-lines { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.grid-line { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(51,65,85,.35); }
+.grid-label { position: absolute; top: 8px; font-size: .65rem; color: #475569; }
 
+.packet-layer { position: absolute; inset: 0; z-index: 100; pointer-events: none; }
 .packet {
-    position: fixed; width: 32px; height: 32px; border-radius: 6px;
+    position: absolute; width: 32px; height: 32px; border-radius: 6px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.7rem; font-weight: bold; cursor: pointer;
-    transition: transform 0.1s; z-index: 100; user-select: none;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    font-size: .72rem; font-weight: bold; cursor: pointer; pointer-events: auto;
+    box-shadow: 0 2px 8px rgba(0,0,0,.45); transition: transform .1s;
 }
-.packet:hover { transform: scale(1.2); z-index: 200; }
-.packet.data { background: #3b82f6; color: white; border: 2px solid #60a5fa; }
-.packet.ack { background: #10b981; color: white; border: 2px solid #34d399; width: 28px; height: 28px; font-size: 0.6rem; }
-.packet.lost { opacity: 0.3; filter: grayscale(100%); }
-.packet.dropped { animation: dropPacket 0.5s ease forwards; }
+.packet:hover { transform: scale(1.18); z-index: 200; }
+.packet.data { background: #3b82f6; color: #fff; border: 2px solid #60a5fa; }
+.packet.ack  { background: #10b981; color: #fff; border: 2px solid #34d399;
+               width: 28px; height: 28px; font-size: .62rem; }
+.packet.rtx  { background: #8b5cf6; border-color: #a78bfa; }
+.packet-number {
+    position: absolute; bottom: -17px; left: 50%; transform: translateX(-50%);
+    font-size: .62rem; color: #94a3b8; white-space: nowrap; pointer-events: none;
+}
+.packet.dropped { animation: dropPacket .48s ease forwards; pointer-events: none; }
+.packet.dropped.manual { animation: dropManual .48s ease forwards; }
 @keyframes dropPacket {
-    0% { transform: scale(1) rotate(0deg); opacity: 1; }
+    0%   { transform: scale(1) rotate(0); opacity: 1; }
     100% { transform: scale(0) rotate(180deg); opacity: 0; }
 }
-.packet-number {
-    position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%);
-    font-size: 0.65rem; color: #94a3b8; white-space: nowrap;
+@keyframes dropManual {
+    0%   { transform: scale(1) rotate(0); opacity: 1; background: #ef4444; border-color: #f87171; }
+    100% { transform: scale(0) rotate(180deg); opacity: 0; background: #ef4444; }
 }
 
-.scroll-hint {
-    position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
-    font-size: 0.75rem; color: #64748b; background: rgba(15, 23, 42, 0.8);
-    padding: 4px 12px; border-radius: 12px; z-index: 50; pointer-events: none;
-}
+.hint { position: absolute; bottom: 6px; right: 14px; font-size: .7rem; color: #475569; z-index: 60; }
 
+/* ===== LOG ===== */
 .log-panel {
-    position: fixed; right: 0; top: 0; width: 350px; height: 100vh;
-    background: #1e293b; border-left: 1px solid #334155;
-    overflow-y: auto; padding: 15px; z-index: 1000;
-    transform: translateX(100%); transition: transform 0.3s ease;
+    position: fixed; right: 0; bottom: 0; width: 380px; max-height: 45vh;
+    background: #111c33; border-left: 1px solid #334155; border-top: 1px solid #334155;
+    transform: translateY(calc(100% - 38px)); transition: transform .2s ease; z-index: 300;
+    display: flex; flex-direction: column;
 }
-.log-panel.open { transform: translateX(0); }
-.log-panel h3 { color: #60a5fa; margin-bottom: 10px; font-size: 1rem; }
-.log-entry {
-    padding: 6px 10px; margin-bottom: 4px; border-radius: 4px;
-    font-size: 0.8rem; border-left: 3px solid transparent;
+.log-panel.open { transform: translateY(0); }
+.log-panel h3 {
+    font-size: .8rem; padding: 10px 14px; border-bottom: 1px solid #334155;
+    color: #94a3b8; cursor: pointer; flex: 0 0 auto;
 }
-.log-entry.sent { background: rgba(59, 130, 246, 0.1); border-left-color: #3b82f6; }
-.log-entry.ack { background: rgba(16, 185, 129, 0.1); border-left-color: #10b981; }
-.log-entry.lost { background: rgba(239, 68, 68, 0.1); border-left-color: #ef4444; }
-.log-entry.timeout { background: rgba(245, 158, 11, 0.1); border-left-color: #f59e0b; }
-.log-entry.info { background: rgba(148, 163, 184, 0.1); border-left-color: #94a3b8; }
-.log-entry .time { color: #64748b; font-size: 0.75rem; margin-right: 8px; }
+#logContent { overflow-y: auto; padding: 8px 14px 14px; font-size: .74rem; font-family: ui-monospace, monospace; }
+.log-entry { padding: 2px 0; border-bottom: 1px solid rgba(51,65,85,.35); }
+.log-time { color: #475569; margin-right: 6px; }
+.log-ok    { color: #34d399; }
+.log-lost  { color: #f87171; }
+.log-ack   { color: #fbbf24; }
+.log-rtx   { color: #a78bfa; }
+.log-warn  { color: #fb923c; font-weight: bold; }
+.log-win   { color: #60a5fa; }
+.log-phase { color: #93c5fd; font-weight: bold; }
+.log-dim   { color: #64748b; }
+.log-info  { color: #cbd5e1; }
 
-.toggle-log {
-    position: fixed; right: 20px; bottom: 20px; z-index: 1001;
-    padding: 12px 16px; border-radius: 50%; background: #3b82f6;
-    color: white; border: none; cursor: pointer; font-size: 1.2rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: all 0.2s;
-}
-.toggle-log:hover { background: #2563eb; transform: scale(1.1); }
-
-.modal-overlay {
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.7); display: flex;
-    align-items: center; justify-content: center; z-index: 2000;
-    opacity: 0; pointer-events: none; transition: opacity 0.3s;
-}
-.modal-overlay.active { opacity: 1; pointer-events: all; }
-.modal-content {
-    background: #1e293b; border-radius: 12px; padding: 30px;
-    max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;
-    border: 1px solid #334155;
-}
-.modal-content h2 { color: #60a5fa; margin-bottom: 15px; }
-.modal-content pre { background: #0f172a; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; color: #e2e8f0; }
-.modal-close { margin-top: 15px; padding: 8px 20px; background: #475569; color: white; border: none; border-radius: 6px; cursor: pointer; }
-
-.speed-control { display: flex; align-items: center; gap: 10px; padding: 0 20px; background: #1e293b; border-bottom: 1px solid #334155; }
-.speed-control label { color: #94a3b8; font-size: 0.85rem; }
-.speed-control input[type="range"] { flex: 1; max-width: 200px; }
-
+/* ===== TOOLTIP / MODAL ===== */
 .packet-tooltip {
-    position: fixed; background: #1e293b; border: 1px solid #475569;
-    border-radius: 6px; padding: 8px 12px; font-size: 0.8rem;
-    z-index: 200; pointer-events: none; opacity: 0; transition: opacity 0.2s;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    position: fixed; background: #1e293b; border: 1px solid #475569; border-radius: 6px;
+    padding: 8px 10px; font-size: .74rem; z-index: 500; pointer-events: none;
+    opacity: 0; transition: opacity .12s;
 }
 .packet-tooltip.visible { opacity: 1; }
+.packet-tooltip em { color: #fbbf24; font-style: normal; }
 
-@media (max-width: 768px) {
-    .controls-panel { flex-direction: column; }
-    .timeline-outer { height: 400px; }
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none;
+    align-items: center; justify-content: center; z-index: 600;
+}
+.modal-overlay.visible { display: flex; }
+.modal-content {
+    background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+    padding: 22px; max-width: 560px; width: 92%;
+}
+.modal-content h2 { font-size: 1.05rem; margin-bottom: 10px; }
+.modal-content p { color: #94a3b8; font-size: .84rem; margin-bottom: 10px; }
+.modal-content pre {
+    background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+    padding: 12px; font-size: .78rem; overflow-x: auto; color: #cbd5e1;
+}
+.modal-close { margin-top: 14px; }
+
+@media (max-width: 900px) {
     .log-panel { width: 100%; }
+    .btn-group { margin-left: 0; }
 }
 </style>
 </head>
 <body>
+
 <div class="header">
-    <h1>🌐 TCP Sliding Window Simulator</h1>
-    <p>Интерактивная демонстрация работы протокола TCP с механизмом скользящего окна</p>
+    <h1>🌐 TCP Sliding Window Simulator — интерактивная версия</h1>
+    <p>Живая демонстрация: пакеты можно ронять кликом прямо в полёте.
+       Правила передачи и роста окна совпадают с событийной версией
+       (<a href="/latest/">/latest</a>).</p>
 </div>
 
 <div class="controls-panel">
     <div class="control-group">
         <label>Время передачи пакета (мс)</label>
-        <input type="number" id="packetTime" value="1000" min="100" max="10000" step="100">
+        <input type="number" id="packetTime" value="2500" min="100" max="10000" step="100">
     </div>
     <div class="control-group">
         <label>Время передачи ACK (мс)</label>
-        <input type="number" id="ackTime" value="500" min="50" max="5000" step="50">
+        <input type="number" id="ackTime" value="1500" min="50" max="5000" step="50">
     </div>
     <div class="control-group">
-        <label>Начальный размер окна отправки</label>
+        <label>Начальное окно (cwnd)</label>
         <input type="number" id="sendWindow" value="4" min="1" max="64" step="1">
     </div>
     <div class="control-group">
-        <label>Начальный размер окна приёма</label>
+        <label>Окно приёма (rwnd)</label>
         <input type="number" id="recvWindow" value="8" min="1" max="64" step="1">
     </div>
     <div class="control-group">
-        <label>Протокол TCP</label>
+        <label>Протокол</label>
         <select id="protocol">
-            <option value="classic">Classic Sliding Window</option>
+            <option value="classic">Classic (фиксированное окно)</option>
             <option value="tahoe">TCP Tahoe</option>
             <option value="reno" selected>TCP Reno</option>
-            <option value="cubic">TCP Cubic</option>
-            <option value="bbr">TCP BBR</option>
+            <option value="cubic">TCP CUBIC (RFC 9438)</option>
         </select>
     </div>
     <div class="control-group">
@@ -258,43 +234,55 @@ body {
         <input type="number" id="ackLoss" value="2" min="0" max="50" step="1">
     </div>
     <div class="control-group">
-        <label>Тайм-аут (мс)</label>
-        <input type="number" id="timeout" value="3000" min="500" max="20000" step="500">
+        <label>Стартовый RTO (мс)</label>
+        <input type="number" id="timeout" value="8000" min="200" max="20000" step="500">
     </div>
     <div class="control-group">
-        <label>Пропускная способность (пакетов/сек)</label>
+        <label>Пропускная (сег/с)</label>
         <input type="number" id="bandwidth" value="10" min="1" max="100" step="1">
     </div>
     <div class="control-group">
         <label>Режим переотправки</label>
         <select id="retransmitMode">
-            <option value="gobackn" selected>Go-Back-N (все с потерянного)</option>
-            <option value="selective">Selective (только потерянный)</option>
+            <option value="gobackn" selected>Go-Back-N</option>
+            <option value="selective">Selective Repeat</option>
         </select>
     </div>
+    <div class="control-group">
+        <label>Seed</label>
+        <input type="number" id="seed" value="1" step="1" style="width:80px">
+    </div>
+
     <div class="btn-group">
-        <button class="btn btn-success" id="btnStart" onclick="startSimulation()">▶ Старт</button>
-        <button class="btn btn-warning" id="btnPause" onclick="pauseSimulation()" disabled>⏸ Пауза</button>
-        <button class="btn btn-danger" id="btnReset" onclick="resetSimulation()">↺ Сброс</button>
-        <button class="btn btn-primary" onclick="showAPI()">📡 API</button>
+        <button class="btn btn-success" id="btnStart">▶ Старт</button>
+        <button class="btn btn-warning" id="btnPause" disabled>⏸ Пауза</button>
+        <button class="btn btn-danger" id="btnReset">↺ Сброс</button>
+        <button class="btn btn-primary" id="btnApi">📡 API</button>
     </div>
 </div>
 
 <div class="speed-control">
     <label>Скорость симуляции:</label>
-    <input type="range" id="speedRange" min="0.1" max="3" value="1" step="0.1">
-    <span id="speedValue" style="color: #60a5fa; font-weight: bold; min-width: 40px;">1.0x</span>
+    <input type="range" id="speedRange" min="0.1" max="5" value="1" step="0.1">
+    <span id="speedValue" style="color:#60a5fa;font-weight:bold;min-width:44px">1.0×</span>
+    <button class="btn btn-primary active" id="btnFollow" style="margin-left:auto;padding:5px 10px">
+        🎯 Следовать за окном
+    </button>
 </div>
 
 <div class="stats-bar">
-    <div class="stat-item"><span class="stat-label">Отправлено пакетов:</span><span class="stat-value" id="statSent">0</span></div>
-    <div class="stat-item"><span class="stat-label">Получено пакетов:</span><span class="stat-value" id="statReceived">0</span></div>
-    <div class="stat-item"><span class="stat-label">Отправлено ACK:</span><span class="stat-value" id="statAckSent">0</span></div>
-    <div class="stat-item"><span class="stat-label">Получено ACK:</span><span class="stat-value" id="statAckReceived">0</span></div>
-    <div class="stat-item"><span class="stat-label">Потеряно пакетов:</span><span class="stat-value" id="statLost">0</span></div>
-    <div class="stat-item"><span class="stat-label">Текущее окно:</span><span class="stat-value" id="statWindow">4</span></div>
+    <div class="stat-item"><span class="stat-label">Время:</span><span class="stat-value" id="statClock">0.0s</span></div>
+    <div class="stat-item"><span class="stat-label">Отправлено:</span><span class="stat-value" id="statSent">0</span></div>
+    <div class="stat-item"><span class="stat-label">Доставлено:</span><span class="stat-value" id="statReceived">0</span></div>
+    <div class="stat-item"><span class="stat-label">ACK отпр.:</span><span class="stat-value" id="statAckSent">0</span></div>
+    <div class="stat-item"><span class="stat-label">ACK получ.:</span><span class="stat-value" id="statAckReceived">0</span></div>
+    <div class="stat-item"><span class="stat-label">Потеряно:</span><span class="stat-value" id="statLost">0</span></div>
+    <div class="stat-item"><span class="stat-label">Повторов:</span><span class="stat-value" id="statRtx">0</span></div>
+    <div class="stat-item"><span class="stat-label">cwnd:</span><span class="stat-value" id="statWindow">4</span></div>
     <div class="stat-item"><span class="stat-label">ssthresh:</span><span class="stat-value" id="statSsthresh">64</span></div>
-    <div class="stat-item"><span class="stat-label">Фаза:</span><span class="stat-value" id="statPhase">Slow Start</span></div>
+    <div class="stat-item"><span class="stat-label">RTO:</span><span class="stat-value" id="statRto">8000</span></div>
+    <div class="stat-item"><span class="stat-label">SRTT:</span><span class="stat-value" id="statSrtt">—</span></div>
+    <div class="stat-item"><span class="stat-label">Фаза:</span><span class="stat-value" id="statPhase">slow-start</span></div>
 </div>
 
 <div class="timeline-outer" id="timelineOuter">
@@ -305,949 +293,929 @@ body {
             <div class="grid-lines" id="gridLines"></div>
             <div class="lane sender-lane" id="senderLane">
                 <div class="lane-track"></div>
-                <div class="lane-window sender-window" id="senderWindow"></div>
+                <div class="lane-window sender-window" id="senderWindow">
+                    <div class="phase-badge phase-slow-start">slow-start</div>
+                    <div class="window-indicator"></div>
+                </div>
             </div>
             <div class="lane receiver-lane" id="receiverLane">
                 <div class="lane-track"></div>
-                <div class="lane-window receiver-window" id="receiverWindow"></div>
+                <div class="lane-window receiver-window" id="receiverWindow">
+                    <div class="window-indicator"></div>
+                </div>
             </div>
+            <div class="packet-layer" id="packetLayer"></div>
         </div>
     </div>
-    <div class="scroll-hint">🖱️ Прокручивайте для навигации по ленте</div>
+    <div class="hint">🖱️ Тяните/прокручивайте ленту · клик по пакету — сбросить его</div>
 </div>
 
 <div class="log-panel" id="logPanel">
-    <h3>📋 Журнал событий</h3>
+    <h3 id="btnLog">📋 Журнал событий (нажмите, чтобы свернуть/развернуть)</h3>
     <div id="logContent"></div>
 </div>
 
-<button class="toggle-log" onclick="toggleLog()">📋</button>
-
 <div class="modal-overlay" id="apiModal">
     <div class="modal-content">
-        <h2>📡 REST API Documentation</h2>
-        <p style="color: #94a3b8; margin-bottom: 15px;">Доступные endpoints:</p>
-        <pre><code>GET /parameters
-POST /set
-POST /play</code></pre>
-        <button class="modal-close" onclick="closeModal()">Закрыть</button>
+        <h2>📡 REST API</h2>
+        <p>Эта страница считает всё в браузере. Событийный движок доступен по REST API
+           (тот же самый набор правил):</p>
+        <pre><code>GET  /api/schema      параметры, диапазоны, протоколы
+POST /api/simulate    расчёт трассы (мгновенно, в виртуальном времени)
+GET  /api/health</code></pre>
+        <p style="margin-top:10px">Также API опубликован напрямую на порту <code>5000</code>.
+           Интерактивный плеер трасс — на <a href="/latest/" style="color:#60a5fa">/latest</a>.</p>
+        <button class="btn btn-primary modal-close" id="btnApiClose">Закрыть</button>
     </div>
 </div>
 
 <div class="packet-tooltip" id="tooltip"></div>
 
-<script>
-// ==================== CONFIG ====================
-const LANE_SEGMENT_WIDTH = 60;
-const LANE_PADDING = 200;
-const CONTENT_GROWTH = 500;
+<script type="module">
+// =====================================================================
+// TCP engine — JavaScript port of backend/engine (core.py, congestion.py,
+// rto.py, prng.py). Same rules, same constants, same event trace.
+//
+// Difference from the backend: the event queue is *paced* by a real clock
+// instead of being drained instantly, so packets can be watched in flight and
+// dropped by hand. Manual drop = flipping the `lost` flag on an already
+// scheduled arrival event.
+//
+// References: RFC 5681 (SS/CA/fast recovery), RFC 6582 (NewReno),
+//             RFC 6298 (RTO), RFC 9438 (CUBIC).
+// =====================================================================
 
-// ==================== STATE ====================
-let isRunning = false;
-let isPaused = false;
-let speedMultiplier = 1;
-let nextPacketId = 0;
-let packets = [];
-let logs = [];
+// ---------- PRNG: splitmix64 (deterministic, serializable) ----------
+class PRNG {
+  constructor(seed) { this.state = BigInt(seed) & 0xFFFFFFFFFFFFFFFFn; }
+  nextU64() {
+    const M = 0xFFFFFFFFFFFFFFFFn;
+    this.state = (this.state + 0x9E3779B97F4A7C15n) & M;
+    let z = this.state;
+    z = ((z ^ (z >> 30n)) * 0xBF58476D1CE4E5B9n) & M;
+    z = ((z ^ (z >> 27n)) * 0x94D049BB133111EBn) & M;
+    return (z ^ (z >> 31n)) & M;
+  }
+  chance(percent) {
+    const u = Number(this.nextU64()) / 18446744073709551616; // 2^64
+    return u * 100.0 < percent;
+  }
+}
 
-let stats = {
-    sent: 0, received: 0, ackSent: 0, ackReceived: 0,
-    lost: 0, ackLost: 0,
-    windowHistory: [], ssthreshHistory: []
+// ---------- RTO estimator (RFC 6298) ----------
+class RtoEstimator {
+  constructor(rto) {
+    this.rto = rto; this.srtt = 0; this.rttvar = 0; this.hasSample = false;
+    this.G = 1.0; this.rtoMin = 200.0; this.rtoMax = 60000.0;
+    this.K = 4; this.ALPHA = 1 / 8; this.BETA = 1 / 4;
+  }
+  update(r) {                       // one RTT sample (ms); Karn handled by caller
+    if (!this.hasSample) {
+      this.srtt = r; this.rttvar = r / 2; this.hasSample = true;
+    } else {
+      // RTTVAR uses SRTT *before* SRTT is updated
+      this.rttvar = (1 - this.BETA) * this.rttvar + this.BETA * Math.abs(this.srtt - r);
+      this.srtt = (1 - this.ALPHA) * this.srtt + this.ALPHA * r;
+    }
+    this.rto = this._clamp(this.srtt + Math.max(this.G, this.K * this.rttvar));
+  }
+  backoff() { this.rto = this._clamp(this.rto * 2); }
+  _clamp(v) { return Math.max(this.rtoMin, Math.min(this.rtoMax, v)); }
+}
+
+// ---------- CUBIC constants (RFC 9438) ----------
+const BETA_CUBIC = 0.7;                                   // §4.6
+const C_CUBIC = 0.4;                                      // §4.1.1
+const ALPHA_CUBIC = 3 * (1 - BETA_CUBIC) / (1 + BETA_CUBIC); // §4.3 ≈ 0.5294
+
+// ---------- Congestion control strategies ----------
+class CC {
+  onNewAck(e, acked, segmentsAcked) { throw new Error("abstract"); }
+  onTripleDupAck(e) { throw new Error("abstract"); }
+  onTimeout(e) {
+    e.ssthresh = Math.max(e.cwnd / 2, 2);
+    e.setPhase("slow-start");
+    e.setCwnd(1.0, "timeout");
+    e.emitSsthresh();
+  }
+}
+
+class Classic extends CC {
+  static pname = "classic";
+  onNewAck() {}                       // fixed window, no congestion control
+  onTripleDupAck(e) { e.fastRetransmit(); }   // reliability only
+  onTimeout() {}                      // window unchanged
+}
+
+class SlowStartCA extends CC {
+  _grow(e) {
+    if (e.phase === "slow-start") {
+      e.setCwnd(e.cwnd + 1, "slow-start");
+      if (e.cwnd >= e.ssthresh) e.setPhase("congestion-avoidance");
+    } else if (e.phase === "congestion-avoidance") {
+      e.setCwnd(e.cwnd + 1.0 / e.cwnd, "cong-avoid");
+    }
+  }
+  onNewAck(e) { this._grow(e); }
+}
+
+class Tahoe extends SlowStartCA {
+  static pname = "tahoe";
+  onTripleDupAck(e) {
+    e.ssthresh = Math.max(e.cwnd / 2, 2);
+    e.emitSsthresh();
+    e.setPhase("slow-start");
+    e.setCwnd(1.0, "triple-dup-ack");
+    e.fastRetransmit();               // retransmit, then slow start (no fast recovery)
+  }
+}
+
+class Reno extends SlowStartCA {
+  static pname = "reno";
+  onTripleDupAck(e) {
+    e.ssthresh = Math.max(e.cwnd / 2, 2);
+    e.emitSsthresh();
+    e.setPhase("fast-recovery");
+    e.setCwnd(e.ssthresh + 3, "fast-retransmit");   // inflate by 3
+    e.fastRetransmit();
+  }
+}
+
+class Cubic extends CC {
+  static pname = "cubic";
+
+  _startEpoch(e) {                    // §4.2 / §4.8 / §4.10
+    const cu = e.cubic;
+    cu.tEpoch = e.now;
+    cu.cwndEpoch = e.cwnd;
+    cu.wEst = e.cwnd;                 // §4.3: W_est starts at cwnd_epoch
+    if (cu.afterCongestion) {
+      cu.wmax = cu.cwndPrior;
+      const delta = cu.wmax - cu.cwndEpoch;
+      cu.k = delta > 0 ? Math.cbrt(delta / C_CUBIC) : 0.0;
+    } else {
+      // CA entered from slow start (initial or first stage after a timeout)
+      cu.wmax = e.cwnd;
+      cu.k = 0.0;
+      cu.cwndPrior = e.cwnd;
+    }
+    cu.afterCongestion = false;
+    cu.epochStarted = true;
+  }
+
+  _wCubic(cu, tS) { return C_CUBIC * Math.pow(tS - cu.k, 3) + cu.wmax; }
+
+  onNewAck(e, acked, segmentsAcked) {
+    const cu = e.cubic;
+
+    if (e.phase === "slow-start") {
+      e.setCwnd(e.cwnd + segmentsAcked, "slow-start");
+      if (e.cwnd >= e.ssthresh) {
+        e.setPhase("congestion-avoidance");
+        cu.epochStarted = false;
+      }
+      return;
+    }
+    if (e.phase !== "congestion-avoidance") return;
+
+    if (!cu.epochStarted) this._startEpoch(e);
+
+    const tS = (e.now - cu.tEpoch) / 1000.0;
+    const rttS = e.srttS();
+
+    // Reno-friendly region (§4.3)
+    const alpha = cu.wEst >= cu.cwndPrior ? 1.0 : ALPHA_CUBIC;
+    cu.wEst = cu.wEst + alpha * (segmentsAcked / Math.max(e.cwnd, 1.0));
+
+    // cubic target one RTT ahead, clamped (§4.2)
+    const wAhead = this._wCubic(cu, tS + rttS);
+    let target;
+    if (wAhead < e.cwnd) target = e.cwnd;
+    else if (wAhead > 1.5 * e.cwnd) target = 1.5 * e.cwnd;
+    else target = wAhead;
+
+    if (cu.wEst > e.cwnd && cu.wEst >= this._wCubic(cu, tS)) {
+      e.setCwnd(cu.wEst, "cubic-reno-friendly");
+    } else {
+      const reason = e.cwnd < cu.wmax ? "cubic-concave" : "cubic-convex";
+      e.setCwnd(e.cwnd + (target - e.cwnd) / Math.max(e.cwnd, 1.0), reason);
+    }
+  }
+
+  onTripleDupAck(e) {
+    const cu = e.cubic;
+    cu.cwndPrior = e.cwnd;
+    const flight = Math.max(e.flightSize(), 1);
+    e.ssthresh = Math.max(flight * BETA_CUBIC, 2);      // §4.6: from flight_size
+    e.emitSsthresh();
+    e.setPhase("fast-recovery");
+    e.setCwnd(Math.max(e.cwnd * BETA_CUBIC, 2), "fast-retransmit");
+    cu.afterCongestion = true;
+    cu.epochStarted = false;
+    e.fastRetransmit();
+  }
+
+  onTimeout(e) {
+    const cu = e.cubic;
+    cu.cwndPrior = e.cwnd;
+    const flight = Math.max(e.flightSize(), 1);
+    e.ssthresh = Math.max(flight * BETA_CUBIC, 2);      // §4.8: beta, not 1/2
+    e.setPhase("slow-start");
+    e.setCwnd(1.0, "timeout");
+    e.emitSsthresh();
+    cu.afterCongestion = false;                          // next CA: K = 0
+    cu.epochStarted = false;
+  }
+}
+
+const STRATEGIES = {
+  classic: Classic, tahoe: Tahoe, reno: Reno, cubic: Cubic,
 };
 
-// TCP State
-let tcpState = {
-    cwnd: 4,
-    ssthresh: 64,
-    phase: 'slow-start',
-    dupAckCount: 0,
+// ---------- Binary heap keyed on (t, order) ----------
+class Heap {
+  constructor() { this.a = []; }
+  get size() { return this.a.length; }
+  _less(i, j) {
+    const x = this.a[i], y = this.a[j];
+    return x.t !== y.t ? x.t < y.t : x.order < y.order;
+  }
+  push(item) {
+    this.a.push(item);
+    let i = this.a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this._less(i, p)) { [this.a[i], this.a[p]] = [this.a[p], this.a[i]]; i = p; }
+      else break;
+    }
+  }
+  peek() { return this.a[0]; }
+  pop() {
+    const top = this.a[0], last = this.a.pop();
+    if (this.a.length) {
+      this.a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < this.a.length && this._less(l, m)) m = l;
+        if (r < this.a.length && this._less(r, m)) m = r;
+        if (m === i) break;
+        [this.a[i], this.a[m]] = [this.a[m], this.a[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
 
-    sendBase: 0,       // First unacknowledged seq
-    nextSeqNum: 0,     // Next seq to send
-
-    expectedSeqNum: 0,     // Next expected seq at receiver
-    receivedBuffer: new Set(),
-
-    // In-flight: seqNum -> { packetObj, timeoutId, startTime }
-    inFlight: new Map(),
-
-    // For cumulative ACK tracking in CA phase
-    acksInCurrentWindow: 0,  // Count of ACKs received in current window
-
-    cubicWmax: 0,
-    cubicTimeOrigin: 0,
+// ---------- Defaults (must match backend/engine/config.py) ----------
+const DEFAULTS = {
+  packetTime: 2500,
+  ackTime: 1500,
+  sendWindow: 4,
+  recvWindow: 8,
+  protocol: "reno",
+  packetLoss: 5,
+  ackLoss: 2,
+  timeout: 8000,
+  bandwidth: 10,
+  retransmitMode: "gobackn",
 };
 
-let config = {
-    packetTime: 1000, ackTime: 500,
-    sendWindow: 4, recvWindow: 8,
-    protocol: 'reno',
-    packetLoss: 5, ackLoss: 2,
-    timeout: 3000, bandwidth: 10,
-    retransmitMode: 'gobackn'
+// ---------- Discrete-event engine ----------
+class Engine {
+  constructor(cfg, seed = 1) {
+    this.cfg = { ...DEFAULTS, ...cfg };
+    this.cc = new STRATEGIES[this.cfg.protocol]();
+    this.prng = new PRNG(seed);
+
+    this.now = 0;
+    this._order = 0;
+    this.heap = new Heap();
+
+    this.cwnd = this.cfg.sendWindow;
+    this.ssthresh = Math.max(this.cfg.sendWindow * 4, 64);
+    this.phase = "slow-start";
+    this.sendBase = 0;
+    this.nextSeq = 0;
+    this.inFlight = new Map();          // seq -> {sendTime, retransmitted}
+    this.dupAcks = 0;
+    this.nextWireFree = 0;
+    this.sendPending = false;
+
+    this.rto = new RtoEstimator(this.cfg.timeout);
+    this.timerGen = 0;
+    this.timerRunning = false;
+
+    this.cubic = {
+      wmax: 0, tEpoch: 0, cwndEpoch: 0, cwndPrior: 0,
+      wEst: 0, k: 0, epochStarted: false, afterCongestion: false,
+    };
+
+    this.events = [];
+    this.stats = { sent: 0, delivered: 0, lost: 0, ackSent: 0,
+                   ackDelivered: 0, ackLost: 0, retransmits: 0 };
+
+    this.expected = 0;
+    this.recvBuffer = new Set();
+
+    // live view: in-flight things the UI can draw and click
+    this.wire = new Map();              // id -> {id, kind:'data'|'ack', seq, tSend, tArr, lost, done}
+    this._wireId = 1;
+
+    this.onEvent = null;                // UI hook
+    this.onWire = null;                 // UI hook (new thing on the wire)
+  }
+
+  get serializationMs() { return 1000 / Math.max(1, this.cfg.bandwidth); }
+
+  effWindow() { return Math.min(this.cwnd, this.cfg.recvWindow); }
+  flightSize() { return Math.max(this.nextSeq - this.sendBase, 0); }
+  srttS() {
+    const ms = this.rto.hasSample ? this.rto.srtt
+                                  : (this.cfg.packetTime + this.cfg.ackTime);
+    return ms / 1000.0;
+  }
+
+  emit(type, payload = {}) {
+    const ev = { t: Math.round(this.now * 100) / 100, type, ...payload };
+    this.events.push(ev);
+    if (this.onEvent) this.onEvent(ev);
+    return ev;
+  }
+  setCwnd(value, reason = "") {
+    value = Math.max(1.0, value);
+    const changed = Math.floor(value) !== Math.floor(this.cwnd);
+    this.cwnd = value;
+    if (changed) {
+      this.emit("cwnd_change", {
+        value: Math.round(this.cwnd * 1000) / 1000, phase: this.phase, reason,
+      });
+    }
+  }
+  setPhase(phase) {
+    if (phase !== this.phase) { this.phase = phase; this.emit("phase_change", { phase }); }
+  }
+  emitSsthresh() {
+    this.emit("ssthresh_change", { value: Math.round(this.ssthresh * 1000) / 1000 });
+  }
+  _push(t, kind, data) {
+    this.heap.push({ t, order: this._order++, kind, data });
+  }
+
+  // ---- RTO timer ----
+  _startTimer() {
+    this.timerGen += 1;
+    this.timerRunning = true;
+    this._push(this.now + this.rto.rto, "rto", { gen: this.timerGen });
+  }
+  _stopTimer() { this.timerGen += 1; this.timerRunning = false; }
+
+  // ---- sending ----
+  _scheduleSend(t) {
+    if (!this.sendPending) {
+      this.sendPending = true;
+      this._push(Math.max(t, this.nextWireFree), "send", {});
+    }
+  }
+
+  _transmit(seq, retransmit, fast = false) {
+    this.inFlight.set(seq, { sendTime: this.now, retransmitted: retransmit });
+    this.stats.sent += 1;
+    if (fast) this.emit("fast_retransmit", { seq });
+    else this.emit("packet_send", { seq, retransmit });
+    if (retransmit) this.stats.retransmits += 1;
+
+    const lost = this.prng.chance(this.cfg.packetLoss);
+    const arrive = this.now + this.cfg.packetTime;
+
+    // one scheduled arrival carrying its fate — a manual drop just flips .lost
+    const w = { id: this._wireId++, kind: "data", seq, retransmit: retransmit || fast,
+                tSend: this.now, tArr: arrive, lost, done: false };
+    this.wire.set(w.id, w);
+    if (this.onWire) this.onWire(w);
+    this._push(arrive, "data_arrive", { w });
+
+    this.nextWireFree = this.now + this.serializationMs;
+    if (!this.timerRunning) this._startTimer();
+  }
+
+  fastRetransmit() { this._transmit(this.sendBase, true, true); }
+
+  _handleSend() {
+    this.sendPending = false;
+    if ((this.nextSeq - this.sendBase) < this.effWindow()) {
+      const seq = this.nextSeq;
+      this.nextSeq += 1;
+      this._transmit(seq, false);
+      this._scheduleSend(this.nextWireFree);
+    }
+  }
+
+  // ---- receiver ----
+  _handleDataArrive(w) {
+    w.done = true;
+    if (w.lost) { this.stats.lost += 1; this.emit("packet_drop", { seq: w.seq }); return; }
+    const seq = w.seq;
+    this.stats.delivered += 1;
+    this.emit("packet_deliver", { seq });
+
+    if (seq === this.expected) {
+      this.expected += 1;
+      while (this.recvBuffer.has(this.expected)) {
+        this.recvBuffer.delete(this.expected);
+        this.expected += 1;
+      }
+    } else if (seq > this.expected) {
+      if (this.cfg.retransmitMode === "selective" &&
+          (seq - this.expected) < this.cfg.recvWindow) {
+        this.recvBuffer.add(seq);
+      }
+      // go-back-n: discard out-of-order
+    }
+
+    const ack = this.expected;
+    this.stats.ackSent += 1;
+    this.emit("ack_send", { ack });
+
+    const lost = this.prng.chance(this.cfg.ackLoss);
+    const arrive = this.now + this.cfg.ackTime;
+    const w2 = { id: this._wireId++, kind: "ack", seq: ack, tSend: this.now,
+                 tArr: arrive, lost, done: false };
+    this.wire.set(w2.id, w2);
+    if (this.onWire) this.onWire(w2);
+    this._push(arrive, "ack_arrive", { w: w2 });
+  }
+
+  // ---- ack handling ----
+  _handleAckArrive(w) {
+    w.done = true;
+    if (w.lost) { this.stats.ackLost += 1; this.emit("ack_drop", { ack: w.seq }); return; }
+    const ack = w.seq;
+    this.stats.ackDelivered += 1;
+    this.emit("ack_deliver", { ack });
+
+    if (ack > this.sendBase) {                       // new cumulative ACK
+      const seg = this.inFlight.get(ack - 1);
+      if (seg && !seg.retransmitted) {               // Karn: skip retransmits
+        this.rto.update(this.now - seg.sendTime);
+      }
+      const segmentsAcked = ack - this.sendBase;
+      for (let s = this.sendBase; s < ack; s++) this.inFlight.delete(s);
+      this.sendBase = ack;
+      this.dupAcks = 0;
+      if (this.sendBase < this.nextSeq) this._startTimer();
+      else this._stopTimer();
+
+      if (this.phase === "fast-recovery") {
+        this.setCwnd(this.ssthresh, "fr-exit");
+        this.setPhase("congestion-avoidance");
+      } else {
+        this.cc.onNewAck(this, ack, segmentsAcked);
+      }
+      this._scheduleSend(this.now);
+
+    } else if (ack === this.sendBase) {              // duplicate ACK
+      this.dupAcks += 1;
+      this.emit("dup_ack", { ack, count: this.dupAcks });
+      if (this.phase === "fast-recovery") {
+        this.setCwnd(this.cwnd + 1, "fr-inflate");
+        this._scheduleSend(this.now);
+      } else if (this.dupAcks === 3) {
+        this.cc.onTripleDupAck(this);
+      }
+    }
+    // ack < sendBase: stale, ignore
+  }
+
+  _handleRto(gen) {
+    if (gen !== this.timerGen || this.sendBase >= this.nextSeq) return;
+    this.emit("timeout", { seq: this.sendBase });
+    this.cc.onTimeout(this);
+    this.rto.backoff();
+    this.dupAcks = 0;
+    if (this.cfg.retransmitMode === "gobackn") {
+      for (const k of [...this.inFlight.keys()]) {
+        if (k >= this.sendBase) this.inFlight.delete(k);
+      }
+      this.nextSeq = this.sendBase;                  // rewind: resend the window
+    } else {
+      this._transmit(this.sendBase, true);
+    }
+    this.timerRunning = false;
+    this._startTimer();
+    this._scheduleSend(this.now);
+  }
+
+  // ---- driving the clock ----
+  start() {
+    this.emit("cwnd_change", {
+      value: Math.round(this.cwnd * 1000) / 1000, phase: this.phase, reason: "init",
+    });
+    this.emitSsthresh();
+    this._scheduleSend(0);
+  }
+
+  /** Process every event whose virtual time has already arrived. */
+  advanceTo(virtualNow) {
+    let guard = 0;
+    while (this.heap.size && this.heap.peek().t <= virtualNow) {
+      if (++guard > 100000) break;                   // safety
+      const ev = this.heap.pop();
+      this.now = ev.t;
+      switch (ev.kind) {
+        case "send":        this._handleSend(); break;
+        case "data_arrive": this._handleDataArrive(ev.data.w); break;
+        case "ack_arrive":  this._handleAckArrive(ev.data.w); break;
+        case "rto":         this._handleRto(ev.data.gen); break;
+      }
+    }
+    this.now = virtualNow;
+    // NOTE: finished wires are NOT pruned here. The UI needs to see `done` in
+    // order to retire the element it drew; it deletes the entry afterwards.
+  }
+
+  /** Run to completion (no pacing) — used to cross-check against the backend. */
+  runUntil(untilMs) {
+    this.start();
+    while (this.heap.size && this.heap.peek().t <= untilMs) {
+      const ev = this.heap.pop();
+      this.now = ev.t;
+      switch (ev.kind) {
+        case "send":        this._handleSend(); break;
+        case "data_arrive": this._handleDataArrive(ev.data.w); break;
+        case "ack_arrive":  this._handleAckArrive(ev.data.w); break;
+        case "rto":         this._handleRto(ev.data.gen); break;
+      }
+    }
+    return { events: this.events, stats: this.stats };
+  }
+
+  /** User clicked a packet in flight: force it to be lost. */
+  manualDrop(id) {
+    const w = this.wire.get(id);
+    if (!w || w.done || w.lost) return false;
+    w.lost = true;                                   // the queued arrival now drops
+    return true;
+  }
+}
+
+// =====================================================================
+// UI layer. Owns the wall clock, paces the engine, renders the tape.
+// All TCP logic lives in the engine above — this file only draws it.
+// =====================================================================
+
+const SEG_W = 64;          // px per sequence number on the tape
+const PAD_L = 40;
+const $ = (id) => document.getElementById(id);
+
+const viewport = $("timelineViewport");
+const content = $("timelineContent");
+const gridLines = $("gridLines");
+const senderLane = $("senderLane");
+const receiverLane = $("receiverLane");
+const senderWindow = $("senderWindow");
+const receiverWindow = $("receiverWindow");
+const packetLayer = $("packetLayer");
+const tooltip = $("tooltip");
+const logContent = $("logContent");
+
+let engine = null;
+let started = false;       // has engine.start() been called for this run?
+let playing = false;
+let speed = 1;
+let vnow = 0;              // virtual clock (ms)
+let lastTs = null;
+let rafId = null;
+let autoScroll = true;
+
+const els = new Map();     // wire id -> element
+const dying = new Set();   // wire ids being animated out
+
+// ---------- config from the form ----------
+function readConfig() {
+  return {
+    packetTime: +$("packetTime").value,
+    ackTime: +$("ackTime").value,
+    sendWindow: +$("sendWindow").value,
+    recvWindow: +$("recvWindow").value,
+    protocol: $("protocol").value,
+    packetLoss: +$("packetLoss").value,
+    ackLoss: +$("ackLoss").value,
+    timeout: +$("timeout").value,
+    bandwidth: +$("bandwidth").value,
+    retransmitMode: $("retransmitMode").value,
+  };
+}
+
+// ---------- logging ----------
+const LOG_STYLE = {
+  packet_send: "info", fast_retransmit: "rtx", packet_deliver: "ok",
+  packet_drop: "lost", ack_send: "ack", ack_deliver: "ack", ack_drop: "lost",
+  dup_ack: "dim", timeout: "warn", cwnd_change: "win",
+  ssthresh_change: "dim", phase_change: "phase",
+};
+const LOG_TEXT = {
+  packet_send: (e) => `Отправлен пакет #${e.seq}${e.retransmit ? " (повтор)" : ""}`,
+  fast_retransmit: (e) => `Быстрая повторная передача #${e.seq}`,
+  packet_deliver: (e) => `Пакет #${e.seq} доставлен`,
+  packet_drop: (e) => `Пакет #${e.seq} потерян`,
+  ack_send: (e) => `Получатель шлёт ACK ${e.ack}`,
+  ack_deliver: (e) => `ACK ${e.ack} получен`,
+  ack_drop: (e) => `ACK ${e.ack} потерян`,
+  dup_ack: (e) => `Дублирующий ACK ${e.ack} (×${e.count})`,
+  timeout: (e) => `ТАЙМ-АУТ по сегменту #${e.seq} (RTO)`,
+  cwnd_change: (e) => `cwnd = ${e.value} (${e.reason})`,
+  ssthresh_change: (e) => `ssthresh = ${e.value}`,
+  phase_change: (e) => `Фаза: ${e.phase}`,
 };
 
-// ==================== DOM ====================
-const timelineViewport = document.getElementById('timelineViewport');
-const timelineContent = document.getElementById('timelineContent');
-const senderLane = document.getElementById('senderLane');
-const receiverLane = document.getElementById('receiverLane');
-const senderWindow = document.getElementById('senderWindow');
-const receiverWindow = document.getElementById('receiverWindow');
-const gridLines = document.getElementById('gridLines');
-const logContent = document.getElementById('logContent');
-const tooltip = document.getElementById('tooltip');
-
-// ==================== INIT ====================
-function init() {
-    loadConfig();
-    setupTimeline();
-    updateWindowDisplay();
-    setupScroll();
-    log('Симулятор готов к работе', 'info');
+function log(ev) {
+  const fn = LOG_TEXT[ev.type];
+  if (!fn) return;
+  const row = document.createElement("div");
+  row.className = `log-entry log-${LOG_STYLE[ev.type] || "info"}`;
+  row.innerHTML = `<span class="log-time">${(ev.t / 1000).toFixed(2)}s</span> ${fn(ev)}`;
+  logContent.appendChild(row);
+  while (logContent.childElementCount > 400) logContent.removeChild(logContent.firstChild);
+  logContent.scrollTop = logContent.scrollHeight;
 }
 
-function loadConfig() {
-    config.packetTime = parseInt(document.getElementById('packetTime').value);
-    config.ackTime = parseInt(document.getElementById('ackTime').value);
-    config.sendWindow = parseInt(document.getElementById('sendWindow').value);
-    config.recvWindow = parseInt(document.getElementById('recvWindow').value);
-    config.protocol = document.getElementById('protocol').value;
-    config.packetLoss = parseInt(document.getElementById('packetLoss').value);
-    config.ackLoss = parseInt(document.getElementById('ackLoss').value);
-    config.timeout = parseInt(document.getElementById('timeout').value);
-    config.bandwidth = parseInt(document.getElementById('bandwidth').value);
-    config.retransmitMode = document.getElementById('retransmitMode').value;
+// ---------- lane geometry ----------
+const laneY = (lane) => lane.offsetTop + lane.offsetHeight / 2;
 
-    tcpState.cwnd = config.sendWindow;
-    tcpState.ssthresh = Math.max(config.sendWindow * 4, 64);
-}
-
-function setupTimeline() {
-    const viewportWidth = timelineViewport.clientWidth;
-    const initialWidth = Math.max(viewportWidth + 2000, 3000);
-    timelineContent.style.width = initialWidth + 'px';
-    drawGrid(initialWidth);
-}
-
-function drawGrid(totalWidth) {
-    gridLines.innerHTML = '';
-    const segments = Math.floor((totalWidth - LANE_PADDING) / LANE_SEGMENT_WIDTH);
-    for (let i = 0; i <= segments; i++) {
-        const x = LANE_PADDING + i * LANE_SEGMENT_WIDTH;
-        const line = document.createElement('div');
-        line.className = 'grid-line';
-        line.style.left = x + 'px';
-        gridLines.appendChild(line);
-        if (i % 5 === 0) {
-            const label = document.createElement('div');
-            label.className = 'grid-label';
-            label.style.left = x + 'px';
-            label.textContent = i;
-            gridLines.appendChild(label);
-        }
+function drawGrid() {
+  const cols = Math.ceil(content.offsetWidth / SEG_W);
+  gridLines.innerHTML = "";
+  for (let i = 0; i <= cols; i++) {
+    const x = PAD_L + i * SEG_W;
+    const line = document.createElement("div");
+    line.className = "grid-line";
+    line.style.left = x + "px";
+    gridLines.appendChild(line);
+    if (i % 5 === 0) {
+      const lab = document.createElement("div");
+      lab.className = "grid-label";
+      lab.style.left = x + 4 + "px";
+      lab.textContent = i;
+      gridLines.appendChild(lab);
     }
+  }
 }
 
-function extendContentIfNeeded() {
-    const viewportWidth = timelineViewport.clientWidth;
-    const scrollLeft = timelineViewport.scrollLeft;
-    const contentWidth = timelineContent.offsetWidth;
-    if (scrollLeft + viewportWidth > contentWidth - 500) {
-        const newWidth = contentWidth + CONTENT_GROWTH;
-        timelineContent.style.width = newWidth + 'px';
-        drawGrid(newWidth);
+function ensureWidth() {
+  const need = PAD_L + (engine.nextSeq + 12) * SEG_W;
+  if (need > content.offsetWidth) {
+    content.style.width = need + "px";
+    drawGrid();
+  }
+}
+
+// ---------- packets ----------
+function createEl(w) {
+  const el = document.createElement("div");
+  el.className = `packet ${w.kind}${w.retransmit ? " rtx" : ""}`;
+  el.textContent = w.kind === "data" ? w.seq : "A" + w.seq;
+
+  const num = document.createElement("div");
+  num.className = "packet-number";
+  num.textContent = w.kind === "data" ? `Seq ${w.seq}` : `Ack ${w.seq}`;
+  el.appendChild(num);
+
+  el.addEventListener("mouseenter", (e) => {
+    const r = el.getBoundingClientRect();
+    tooltip.style.left = r.left + 22 + "px";
+    tooltip.style.top = r.top - 44 + "px";
+    tooltip.innerHTML =
+      `<strong>${w.kind === "data" ? "Пакет данных" : "ACK"}</strong><br>` +
+      `${w.kind === "data" ? "Seq" : "Ack"}: ${w.seq}<br>` +
+      `<em>Кликните, чтобы сбросить</em>`;
+    tooltip.classList.add("visible");
+  });
+  el.addEventListener("mouseleave", () => tooltip.classList.remove("visible"));
+  el.addEventListener("click", () => {
+    if (engine.manualDrop(w.id)) {
+      tooltip.classList.remove("visible");
+      kill(w.id, true);
     }
+  });
+
+  packetLayer.appendChild(el);
+  els.set(w.id, el);
+  return el;
 }
 
-// ==================== SCROLL ====================
-function setupScroll() {
-    timelineViewport.addEventListener('wheel', (e) => {
-        if (e.deltaY !== 0) {
-            e.preventDefault();
-            timelineViewport.scrollLeft += e.deltaY;
-        }
-    }, { passive: false });
-
-    let isDragging = false;
-    let startX, scrollLeft;
-    timelineViewport.addEventListener('mousedown', (e) => {
-        if (e.target.closest('.packet')) return;
-        isDragging = true;
-        startX = e.pageX - timelineViewport.offsetLeft;
-        scrollLeft = timelineViewport.scrollLeft;
-        timelineViewport.style.cursor = 'grabbing';
-    });
-    timelineViewport.addEventListener('mouseleave', () => { isDragging = false; timelineViewport.style.cursor = 'grab'; });
-    timelineViewport.addEventListener('mouseup', () => { isDragging = false; timelineViewport.style.cursor = 'grab'; });
-    timelineViewport.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        e.preventDefault();
-        const x = e.pageX - timelineViewport.offsetLeft;
-        const walk = (x - startX) * 2;
-        timelineViewport.scrollLeft = scrollLeft - walk;
-    });
+function kill(id, manual) {
+  const el = els.get(id);
+  if (!el || dying.has(id)) return;
+  dying.add(id);
+  el.classList.add("dropped");
+  if (manual) el.classList.add("manual");
+  setTimeout(() => {
+    el.remove();
+    els.delete(id);
+  }, 480);
 }
 
-function autoScrollToPacket(packetScreenX) {
-    const viewportWidth = timelineViewport.clientWidth;
-    const scrollLeft = timelineViewport.scrollLeft;
-    if (packetScreenX > scrollLeft + viewportWidth * 0.6) {
-        const targetScroll = packetScreenX - viewportWidth * 0.3;
-        timelineViewport.scrollTo({ left: targetScroll, behavior: 'smooth' });
+function renderPackets() {
+  const yS = laneY(senderLane);
+  const yR = laneY(receiverLane);
+
+  for (const [id, w] of engine.wire) {
+    if (w.done) {                      // arrival processed: retire it
+      if (!dying.has(id)) {
+        const el = els.get(id);
+        if (el) { el.remove(); els.delete(id); }
+      }
+      engine.wire.delete(id);
+      dying.delete(id);
+      continue;
     }
+    if (dying.has(id)) continue;       // mid death animation
+
+    let el = els.get(id);
+    if (!el) el = createEl(w);
+
+    const span = Math.max(w.tArr - w.tSend, 1e-6);
+    const p = Math.max(0, Math.min(1, (vnow - w.tSend) / span));
+
+    // a doomed packet dies partway across the link, not at the far end
+    if (w.lost && p > 0.62) { kill(id, false); continue; }
+
+    const x = PAD_L + w.seq * SEG_W;
+    const y0 = w.kind === "data" ? yS : yR;
+    const y1 = w.kind === "data" ? yR : yS;
+    el.style.left = x - 16 + "px";
+    el.style.top = y0 + (y1 - y0) * p - 16 + "px";
+  }
 }
 
-// ==================== LOGGING ====================
-function log(message, type = 'info') {
-    const time = new Date().toLocaleTimeString('ru-RU', { hour12: false });
-    logs.push({ time, message, type });
-    const entry = document.createElement('div');
-    entry.className = `log-entry ${type}`;
-    entry.innerHTML = `<span class="time">[${time}]</span> ${message}`;
-    logContent.insertBefore(entry, logContent.firstChild);
-    if (logContent.children.length > 100) logContent.removeChild(logContent.lastChild);
-}
-function toggleLog() { document.getElementById('logPanel').classList.toggle('open'); }
+// ---------- windows + readouts ----------
+function renderWindows() {
+  const eff = Math.min(engine.cwnd, engine.cfg.recvWindow);
+  senderWindow.style.left = PAD_L + engine.sendBase * SEG_W - 6 + "px";
+  senderWindow.style.width = Math.max(eff * SEG_W, 8) + "px";
+  senderWindow.querySelector(".window-indicator").textContent =
+    `cwnd ${engine.cwnd.toFixed(2)} · окно ${eff.toFixed(1)} · base ${engine.sendBase} · next ${engine.nextSeq}`;
+  const badge = senderWindow.querySelector(".phase-badge");
+  badge.textContent = engine.phase;
+  badge.className = `phase-badge phase-${engine.phase}`;
 
-// ==================== WINDOW DISPLAY ====================
-function updateWindowDisplay() {
-    senderWindow.style.width = (tcpState.cwnd * LANE_SEGMENT_WIDTH) + 'px';
-    senderWindow.style.left = (LANE_PADDING + tcpState.sendBase * LANE_SEGMENT_WIDTH) + 'px';
-    receiverWindow.style.width = (config.recvWindow * LANE_SEGMENT_WIDTH) + 'px';
-    receiverWindow.style.left = (LANE_PADDING + tcpState.expectedSeqNum * LANE_SEGMENT_WIDTH) + 'px';
-
-    let indicators = '';
-    indicators += `<div class="window-indicator">cwnd=${tcpState.cwnd.toFixed(2)}</div>`;
-    indicators += `<div class="ssthresh-indicator">ssthresh=${tcpState.ssthresh.toFixed(2)}</div>`;
-    let phaseClass = '', phaseText = '';
-    if (tcpState.phase === 'slow-start') { phaseClass = 'phase-slow-start'; phaseText = 'Slow Start'; }
-    else if (tcpState.phase === 'congestion-avoidance') { phaseClass = 'phase-congestion-avoidance'; phaseText = 'Congestion Avoidance'; }
-    else if (tcpState.phase === 'fast-recovery') { phaseClass = 'phase-fast-recovery'; phaseText = 'Fast Recovery'; }
-    indicators += `<div class="phase-badge ${phaseClass}">${phaseText}</div>`;
-    senderWindow.innerHTML = indicators;
-
-    document.getElementById('statWindow').textContent = tcpState.cwnd.toFixed(2);
-    document.getElementById('statSsthresh').textContent = tcpState.ssthresh.toFixed(2);
-    document.getElementById('statPhase').textContent = phaseText;
+  receiverWindow.style.left = PAD_L + engine.expected * SEG_W - 6 + "px";
+  receiverWindow.style.width = Math.max(engine.cfg.recvWindow * SEG_W, 8) + "px";
+  receiverWindow.querySelector(".window-indicator").textContent =
+    `rwnd ${engine.cfg.recvWindow} · expected ${engine.expected}`;
 }
 
-// ==================== PACKET CREATION ====================
-function getLanePosition(lane, xWithinLane) {
-    const laneRect = lane.getBoundingClientRect();
-    return { x: laneRect.left + xWithinLane, y: laneRect.top + laneRect.height / 2 - 16 };
+function renderStats() {
+  const s = engine.stats;
+  $("statSent").textContent = s.sent;
+  $("statReceived").textContent = s.delivered;
+  $("statAckSent").textContent = s.ackSent;
+  $("statAckReceived").textContent = s.ackDelivered;
+  $("statLost").textContent = s.lost;
+  $("statRtx").textContent = s.retransmits;
+  $("statWindow").textContent = engine.cwnd.toFixed(2);
+  $("statSsthresh").textContent = engine.ssthresh.toFixed(1);
+  $("statPhase").textContent = engine.phase;
+  $("statRto").textContent = Math.round(engine.rto.rto);
+  $("statSrtt").textContent = engine.rto.hasSample ? Math.round(engine.rto.srtt) : "—";
+  $("statClock").textContent = (vnow / 1000).toFixed(1) + "s";
 }
 
-function createPacket(seqNum, type) {
-    const packet = document.createElement('div');
-    packet.className = `packet ${type}`;
-    packet.textContent = type === 'data' ? seqNum : 'A' + seqNum;
-    const laneX = LANE_PADDING + seqNum * LANE_SEGMENT_WIDTH;
-    const startLane = type === 'data' ? senderLane : receiverLane;
-    const startPos = getLanePosition(startLane, laneX);
-    packet.style.left = startPos.x + 'px';
-    packet.style.top = startPos.y + 'px';
-
-    const numLabel = document.createElement('div');
-    numLabel.className = 'packet-number';
-    numLabel.textContent = type === 'data' ? `Seq ${seqNum}` : `Ack ${seqNum}`;
-    packet.appendChild(numLabel);
-
-    packet.addEventListener('mouseenter', (e) => showTooltip(e, seqNum, type));
-    packet.addEventListener('mouseleave', hideTooltip);
-    packet.addEventListener('click', () => dropPacket(packet, seqNum, type));
-
-    document.body.appendChild(packet);
-
-    return {
-        id: nextPacketId++,
-        element: packet,
-        seqNum, type,
-        laneX,
-        startLane,
-        startTime: Date.now(),
-        duration: (type === 'data' ? config.packetTime : config.ackTime) / speedMultiplier,
-        lost: false,
-        arrived: false,
-        progress: 0
-    };
+function follow() {
+  if (!autoScroll) return;
+  const x = PAD_L + engine.nextSeq * SEG_W;
+  const vw = viewport.clientWidth;
+  if (x > viewport.scrollLeft + vw * 0.65) {
+    viewport.scrollLeft = x - vw * 0.45;
+  }
 }
 
-function showTooltip(e, seqNum, type) {
-    const rect = e.target.getBoundingClientRect();
-    tooltip.style.left = (rect.left + 20) + 'px';
-    tooltip.style.top = (rect.top - 40) + 'px';
-    tooltip.innerHTML = `<strong>${type === 'data' ? 'Пакет данных' : 'ACK-пакет'}</strong><br>Seq/Ack: ${seqNum}<br>Кликните, чтобы сбросить`;
-    tooltip.classList.add('visible');
-}
-function hideTooltip() { tooltip.classList.remove('visible'); }
+// ---------- main loop ----------
+function frame(ts) {
+  if (lastTs === null) lastTs = ts;
+  const dt = ts - lastTs;
+  lastTs = ts;
 
-function dropPacket(packetEl, seqNum, type) {
-    const packetObj = packets.find(p => p.element === packetEl);
-    if (packetObj && !packetObj.lost) {
-        packetObj.lost = true;
-        packetEl.classList.add('dropped');
-        log(`${type === 'data' ? 'Пакет' : 'ACK'} #${seqNum} сброшен вручную`, 'lost');
-        if (type === 'data') {
-            stats.lost++;
-            document.getElementById('statLost').textContent = stats.lost;
-            // Mark as lost but DON'T trigger anything - let timeout handle it
-        } else {
-            stats.ackLost++;
-        }
-        setTimeout(() => { if (packetEl.parentNode) packetEl.parentNode.removeChild(packetEl); }, 500);
-    }
+  if (playing && engine) {
+    vnow += dt * speed;
+    engine.advanceTo(vnow);
+    ensureWidth();
+    follow();
+  }
+  if (engine) {
+    renderPackets();
+    renderWindows();
+    renderStats();
+  }
+  rafId = requestAnimationFrame(frame);
 }
 
-// ==================== ANIMATION ====================
-function animatePacket(packetObj) {
-    if (packetObj.lost || packetObj.arrived) return;
-    const elapsed = Date.now() - packetObj.startTime;
-    packetObj.progress = Math.min(elapsed / packetObj.duration, 1);
-
-    const startPos = getLanePosition(packetObj.startLane, packetObj.laneX);
-    const endLane = packetObj.type === 'data' ? receiverLane : senderLane;
-    const endPos = getLanePosition(endLane, packetObj.laneX);
-
-    const currentX = startPos.x + (endPos.x - startPos.x) * packetObj.progress;
-    const currentY = startPos.y + (endPos.y - startPos.y) * packetObj.progress;
-
-    packetObj.element.style.left = currentX + 'px';
-    packetObj.element.style.top = currentY + 'px';
-
-    const viewportWidth = timelineViewport.clientWidth;
-    const scrollLeft = timelineViewport.scrollLeft;
-    const packetRelativeX = packetObj.laneX;
-    if (packetRelativeX > scrollLeft + viewportWidth * 0.6) {
-        extendContentIfNeeded();
-        timelineViewport.scrollLeft = packetRelativeX - viewportWidth * 0.3;
-    }
-
-    if (packetObj.progress < 1) {
-        requestAnimationFrame(() => animatePacket(packetObj));
-    } else if (!packetObj.arrived) {
-        packetObj.arrived = true;
-        onPacketArrived(packetObj);
-    }
+// ---------- controls ----------
+function start() {
+  if (playing) return;
+  if (!engine) reset(false);
+  if (!started) {              // seed the event queue exactly once per run
+    engine.start();
+    started = true;
+  }
+  playing = true;
+  lastTs = null;
+  $("btnStart").disabled = true;
+  $("btnPause").disabled = false;
 }
 
-// ==================== PACKET ARRIVAL ====================
-function onPacketArrived(packetObj) {
-    if (packetObj.lost) return;
-
-    if (packetObj.type === 'data') {
-        stats.received++;
-        document.getElementById('statReceived').textContent = stats.received;
-        log(`Пакет #${packetObj.seqNum} получен получателем`, 'ack');
-
-        if (packetObj.seqNum === tcpState.expectedSeqNum) {
-            tcpState.expectedSeqNum++;
-            while (tcpState.receivedBuffer.has(tcpState.expectedSeqNum)) {
-                tcpState.receivedBuffer.delete(tcpState.expectedSeqNum);
-                tcpState.expectedSeqNum++;
-            }
-            sendAck(tcpState.expectedSeqNum - 1);
-        } else if (packetObj.seqNum > tcpState.expectedSeqNum) {
-            tcpState.receivedBuffer.add(packetObj.seqNum);
-            log(`Пакет #${packetObj.seqNum} получен вне очереди (ожидается #${tcpState.expectedSeqNum})`, 'info');
-            sendDupAck(tcpState.expectedSeqNum - 1);
-        } else {
-            sendAck(packetObj.seqNum);
-        }
-
-        setTimeout(() => {
-            if (packetObj.element.parentNode) {
-                packetObj.element.style.transition = 'all 0.5s ease';
-                packetObj.element.style.opacity = '0';
-                packetObj.element.style.transform = 'scale(0.5)';
-                setTimeout(() => { if (packetObj.element.parentNode) packetObj.element.parentNode.removeChild(packetObj.element); }, 500);
-            }
-        }, 300);
-
-    } else if (packetObj.type === 'ack') {
-        stats.ackReceived++;
-        document.getElementById('statAckReceived').textContent = stats.ackReceived;
-        log(`ACK #${packetObj.seqNum} получен отправителем`, 'ack');
-        handleAck(packetObj.seqNum);
-
-        setTimeout(() => {
-            if (packetObj.element.parentNode) {
-                packetObj.element.style.transition = 'all 0.5s ease';
-                packetObj.element.style.opacity = '0';
-                setTimeout(() => { if (packetObj.element.parentNode) packetObj.element.parentNode.removeChild(packetObj.element); }, 500);
-            }
-        }, 300);
-    }
+function pause() {
+  playing = false;
+  $("btnStart").disabled = false;
+  $("btnPause").disabled = true;
 }
 
-// ==================== SENDER LOGIC ====================
-function trySendNextPacket() {
-    if (!isRunning || isPaused) return;
+function reset(clearLog = true) {
+  playing = false;
+  started = false;
+  vnow = 0;
+  lastTs = null;
+  for (const el of els.values()) el.remove();
+  els.clear();
+  dying.clear();
+  if (clearLog) logContent.innerHTML = "";
 
-    const inFlightCount = tcpState.inFlight.size;
-    const availableWindow = Math.floor(tcpState.cwnd) - inFlightCount;
-    if (availableWindow <= 0) return;
-    if (tcpState.nextSeqNum >= tcpState.sendBase + Math.floor(tcpState.cwnd)) return;
+  const seed = +$("seed").value || 1;
+  engine = new Engine(readConfig(), seed);
+  engine.onEvent = log;
 
-    const seqNum = tcpState.nextSeqNum;
-    tcpState.nextSeqNum++;
-
-    const willBeLost = Math.random() * 100 < config.packetLoss;
-
-    const packetObj = createPacket(seqNum, 'data');
-    packets.push(packetObj);
-    stats.sent++;
-    document.getElementById('statSent').textContent = stats.sent;
-
-    const flightInfo = { packetObj: packetObj, startTime: Date.now() };
-    tcpState.inFlight.set(seqNum, flightInfo);
-
-    log(`Отправлен пакет #${seqNum} (cwnd=${tcpState.cwnd.toFixed(2)}, in-flight=${inFlightCount + 1})`, 'sent');
-
-    // Individual timeout for this packet
-    const timeoutId = setTimeout(() => {
-        if (tcpState.inFlight.has(seqNum)) {
-            handlePacketTimeout(seqNum);
-        }
-    }, config.timeout / speedMultiplier);
-    flightInfo.timeoutId = timeoutId;
-
-    if (willBeLost) {
-        setTimeout(() => {
-            if (!packetObj.arrived && !packetObj.lost) {
-                packetObj.lost = true;
-                packetObj.element.classList.add('lost');
-                log(`Пакет #${seqNum} потерян в канале`, 'lost');
-                stats.lost++;
-                document.getElementById('statLost').textContent = stats.lost;
-                // DON'T trigger congestion control here - wait for timeout
-            }
-        }, (config.packetTime * 0.7) / speedMultiplier);
-    }
-
-    animatePacket(packetObj);
-    setTimeout(() => trySendNextPacket(), 10);
+  content.style.width = "100%";
+  viewport.scrollLeft = 0;
+  drawGrid();
+  renderWindows();
+  renderStats();
+  $("btnStart").disabled = false;
+  $("btnPause").disabled = true;
 }
 
-// ==================== TIMEOUT HANDLER ====================
-// ONLY place where congestion window changes on packet loss
-function handlePacketTimeout(seqNum) {
-    if (!tcpState.inFlight.has(seqNum)) return;
+// ---------- wiring ----------
+$("btnStart").addEventListener("click", start);
+$("btnPause").addEventListener("click", pause);
+$("btnReset").addEventListener("click", () => reset(true));
 
-    const flightInfo = tcpState.inFlight.get(seqNum);
-    clearTimeout(flightInfo.timeoutId);
-
-    log(`ТАЙМ-АУТ для пакета #${seqNum}`, 'timeout');
-
-    // Remove old packet element
-    if (flightInfo.packetObj.element.parentNode) {
-        flightInfo.packetObj.element.classList.add('lost');
-        setTimeout(() => {
-            if (flightInfo.packetObj.element.parentNode) {
-                flightInfo.packetObj.element.parentNode.removeChild(flightInfo.packetObj.element);
-            }
-        }, 500);
-    }
-
-    // Apply congestion control ONLY on timeout
-    const oldSsthresh = tcpState.ssthresh;
-    const oldCwnd = tcpState.cwnd;
-
-    switch (config.protocol) {
-        case 'classic':
-            // No congestion control, just retransmit
-            break;
-        case 'tahoe':
-            tcpState.ssthresh = Math.max(Math.floor(tcpState.cwnd / 2), 2);
-            tcpState.cwnd = 1;
-            tcpState.phase = 'slow-start';
-            log(`[ТАЙМ-АУТ Tahoe] ssthresh: ${oldSsthresh.toFixed(2)} → ${tcpState.ssthresh.toFixed(2)}, cwnd: ${oldCwnd.toFixed(2)} → 1`, 'timeout');
-            break;
-        case 'reno':
-            tcpState.ssthresh = Math.max(Math.floor(tcpState.cwnd / 2), 2);
-            tcpState.cwnd = 1;
-            tcpState.phase = 'slow-start';
-            log(`[ТАЙМ-АУТ Reno] ssthresh: ${oldSsthresh.toFixed(2)} → ${tcpState.ssthresh.toFixed(2)}, cwnd: ${oldCwnd.toFixed(2)} → 1`, 'timeout');
-            break;
-        case 'cubic':
-            tcpState.ssthresh = Math.max(Math.floor(tcpState.cwnd / 2), 2);
-            tcpState.cubicWmax = tcpState.cwnd;
-            tcpState.cwnd = 1;
-            tcpState.cubicTimeOrigin = Date.now();
-            tcpState.phase = 'slow-start';
-            log(`[ТАЙМ-АУТ CUBIC] ssthresh: ${oldSsthresh.toFixed(2)} → ${tcpState.ssthresh.toFixed(2)}, cwnd: ${oldCwnd.toFixed(2)} → 1`, 'timeout');
-            break;
-        case 'bbr':
-            tcpState.ssthresh = Math.max(Math.floor(tcpState.cwnd / 2), 2);
-            tcpState.cwnd = 1;
-            log(`[ТАЙМ-АУТ BBR] ssthresh: ${oldSsthresh.toFixed(2)} → ${tcpState.ssthresh.toFixed(2)}, cwnd: ${oldCwnd.toFixed(2)} → 1`, 'timeout');
-            break;
-    }
-
-    stats.ssthreshHistory.push({ time: Date.now(), value: tcpState.ssthresh });
-    if (Math.floor(oldCwnd) !== Math.floor(tcpState.cwnd)) {
-        stats.windowHistory.push({ time: Date.now(), value: tcpState.cwnd });
-    }
-
-    // Go-Back-N: retransmit ALL unacknowledged packets starting from sendBase
-    const retransStart = tcpState.sendBase;
-    const retransEnd = tcpState.nextSeqNum - 1;
-
-    log(`Go-Back-N: переотправка пакетов #${retransStart}..#${retransEnd}`, 'info');
-
-    // Clear all in-flight tracking (they'll be retransmitted)
-    tcpState.inFlight.forEach((info, key) => {
-        if (key !== seqNum) {
-            clearTimeout(info.timeoutId);
-            if (info.packetObj.element && info.packetObj.element.parentNode) {
-                info.packetObj.element.classList.add('lost');
-                setTimeout(() => {
-                    if (info.packetObj.element.parentNode) info.packetObj.element.parentNode.removeChild(info.packetObj.element);
-                }, 500);
-            }
-        }
-    });
-    tcpState.inFlight.clear();
-
-    // Reset for retransmission
-    tcpState.nextSeqNum = tcpState.sendBase;
-    tcpState.acksInCurrentWindow = 0;
-    tcpState.dupAckCount = 0;
-
-    updateWindowDisplay();
-
-    // Start retransmission after a brief delay
-    setTimeout(() => {
-        if (isRunning && !isPaused) trySendNextPacket();
-    }, 100 / speedMultiplier);
-}
-
-// ==================== RECEIVER / ACK ====================
-function sendAck(ackNum) {
-    if (!isRunning || isPaused) return;
-    if (Math.random() * 100 < config.ackLoss) {
-        log(`ACK #${ackNum} потерян в канале`, 'lost');
-        stats.ackLost++;
-        return;
-    }
-    const packetObj = createPacket(ackNum, 'ack');
-    packets.push(packetObj);
-    stats.ackSent++;
-    document.getElementById('statAckSent').textContent = stats.ackSent;
-    log(`Отправлен ACK #${ackNum} (cumulative)`, 'sent');
-    animatePacket(packetObj);
-}
-
-function sendDupAck(ackNum) {
-    if (!isRunning || isPaused) return;
-    if (Math.random() * 100 < config.ackLoss) {
-        stats.ackLost++;
-        return;
-    }
-    const packetObj = createPacket(ackNum, 'ack');
-    packets.push(packetObj);
-    stats.ackSent++;
-    document.getElementById('statAckSent').textContent = stats.ackSent;
-    log(`Отправлен дублированный ACK #${ackNum}`, 'sent');
-    animatePacket(packetObj);
-}
-
-// ==================== HANDLE ACK AT SENDER ====================
-function handleAck(ackNum) {
-    const oldSendBase = tcpState.sendBase;
-
-    if (ackNum >= tcpState.sendBase) {
-        // New cumulative ACK - clear all acknowledged packets
-        for (let i = tcpState.sendBase; i <= ackNum; i++) {
-            if (tcpState.inFlight.has(i)) {
-                const info = tcpState.inFlight.get(i);
-                clearTimeout(info.timeoutId);
-                tcpState.inFlight.delete(i);
-            }
-        }
-
-        tcpState.sendBase = ackNum + 1;
-        tcpState.dupAckCount = 0;
-
-        if (oldSendBase !== tcpState.sendBase) {
-            log(`Окно сдвинулось: sendBase ${oldSendBase} → ${tcpState.sendBase}`, 'info');
-        }
-
-        // Update congestion window based on phase
-        updateCongestionWindowOnNewAck();
-
-    } else if (ackNum === tcpState.sendBase - 1) {
-        // Duplicate ACK
-        tcpState.dupAckCount++;
-        log(`Дублированный ACK #${ackNum} (${tcpState.dupAckCount}/3)`, 'info');
-
-        if (tcpState.dupAckCount === 3) {
-            handleTripleDupAck(ackNum);
-        } else if (tcpState.dupAckCount > 3 && tcpState.phase === 'fast-recovery') {
-            // In fast recovery: each additional dup ACK inflates cwnd by 1
-            // This allows sending new packets to keep pipe full
-            tcpState.cwnd += 1;
-            log(`[Fast Recovery] cwnd инфлирован: ${tcpState.cwnd.toFixed(2)} (+1 за dup ACK)`, 'info');
-            updateWindowDisplay();
-        }
-    }
-
-    updateWindowDisplay();
-    setTimeout(() => trySendNextPacket(), 10);
-}
-
-// ==================== CONGESTION WINDOW UPDATE (new ACK only) ====================
-function updateCongestionWindowOnNewAck() {
-    const oldCwnd = tcpState.cwnd;
-
-    switch (config.protocol) {
-        case 'classic': break;
-
-        case 'tahoe':
-            if (tcpState.phase === 'slow-start') {
-                tcpState.cwnd += 1;
-                if (tcpState.cwnd >= tcpState.ssthresh) {
-                    tcpState.phase = 'congestion-avoidance';
-                    tcpState.acksInCurrentWindow = 0;
-                    log('Переход в фазу Congestion Avoidance', 'info');
-                }
-            } else if (tcpState.phase === 'congestion-avoidance') {
-                // CA: increase by 1 per RTT = per windowful of ACKs
-                tcpState.acksInCurrentWindow++;
-                if (tcpState.acksInCurrentWindow >= Math.floor(tcpState.cwnd)) {
-                    tcpState.cwnd += 1;
-                    tcpState.acksInCurrentWindow = 0;
-                    log(`[CA] Окно увеличено до ${tcpState.cwnd.toFixed(2)} (после ${Math.floor(oldCwnd)} ACK)`, 'info');
-                }
-            }
-            break;
-
-        case 'reno':
-            if (tcpState.phase === 'slow-start') {
-                tcpState.cwnd += 1;
-                if (tcpState.cwnd >= tcpState.ssthresh) {
-                    tcpState.phase = 'congestion-avoidance';
-                    tcpState.acksInCurrentWindow = 0;
-                    log('Переход в фазу Congestion Avoidance', 'info');
-                }
-            } else if (tcpState.phase === 'congestion-avoidance') {
-                // CA: increase by 1 per RTT = per windowful of ACKs
-                tcpState.acksInCurrentWindow++;
-                if (tcpState.acksInCurrentWindow >= Math.floor(tcpState.cwnd)) {
-                    tcpState.cwnd += 1;
-                    tcpState.acksInCurrentWindow = 0;
-                    log(`[CA] Окно увеличено до ${tcpState.cwnd.toFixed(2)} (после ${Math.floor(oldCwnd)} ACK)`, 'info');
-                }
-            } else if (tcpState.phase === 'fast-recovery') {
-                // Exit fast recovery: deflate cwnd to ssthresh
-                tcpState.cwnd = tcpState.ssthresh;
-                tcpState.phase = 'congestion-avoidance';
-                tcpState.acksInCurrentWindow = 0;
-                log(`[Fast Recovery] Выход: cwnd дефлирован до ssthresh=${tcpState.ssthresh.toFixed(2)}`, 'info');
-            }
-            break;
-
-        case 'cubic':
-            if (tcpState.phase === 'slow-start') {
-                tcpState.cwnd += 1;
-                if (tcpState.cwnd >= tcpState.ssthresh) {
-                    tcpState.phase = 'congestion-avoidance';
-                    tcpState.cubicWmax = tcpState.cwnd;
-                    tcpState.cubicTimeOrigin = Date.now();
-                    log('Переход в фазу Congestion Avoidance (CUBIC)', 'info');
-                }
-            } else if (tcpState.phase === 'congestion-avoidance') {
-                const t = (Date.now() - tcpState.cubicTimeOrigin) / 1000;
-                const K = Math.cbrt(tcpState.cubicWmax * 0.3 / 0.4);
-                const newCwnd = 0.4 * Math.pow(t - K, 3) + tcpState.cubicWmax;
-                tcpState.cwnd = Math.max(1, newCwnd);
-            } else if (tcpState.phase === 'fast-recovery') {
-                tcpState.cwnd = tcpState.ssthresh;
-                tcpState.phase = 'congestion-avoidance';
-                log(`[Fast Recovery] Выход: cwnd дефлирован до ${tcpState.ssthresh.toFixed(2)}`, 'info');
-            }
-            break;
-
-        case 'bbr':
-            if (tcpState.phase === 'slow-start') {
-                tcpState.cwnd += 1;
-                if (tcpState.cwnd >= tcpState.ssthresh) {
-                    tcpState.phase = 'congestion-avoidance';
-                    log('Переход в фазу Congestion Avoidance (BBR)', 'info');
-                }
-            } else {
-                const rtt = (config.packetTime + config.ackTime) / 1000;
-                const bdp = config.bandwidth * rtt;
-                tcpState.cwnd = Math.min(bdp * 2, tcpState.cwnd + 0.5);
-            }
-            break;
-    }
-
-    if (Math.floor(oldCwnd) !== Math.floor(tcpState.cwnd)) {
-        stats.windowHistory.push({ time: Date.now(), value: tcpState.cwnd });
-        log(`Размер окна изменён: ${oldCwnd.toFixed(2)} → ${tcpState.cwnd.toFixed(2)}`, 'info');
-    }
-}
-
-// ==================== TRIPLE DUP ACK ====================
-function handleTripleDupAck(ackNum) {
-    log(`ТРОЙНОЙ дублированный ACK #${ackNum}`, 'timeout');
-
-    const oldSsthresh = tcpState.ssthresh;
-    const oldCwnd = tcpState.cwnd;
-
-    switch (config.protocol) {
-        case 'reno':
-            // Fast Retransmit + Fast Recovery
-            tcpState.ssthresh = Math.max(Math.floor(tcpState.cwnd / 2), 2);
-            tcpState.cwnd = tcpState.ssthresh + 3;
-            tcpState.phase = 'fast-recovery';
-            log(`[3× dupACK Reno] ssthresh: ${oldSsthresh.toFixed(2)} → ${tcpState.ssthresh.toFixed(2)}, cwnd: ${oldCwnd.toFixed(2)} → ${tcpState.cwnd.toFixed(2)} (Fast Recovery)`, 'timeout');
-
-            // Fast retransmit: retransmit only the lost packet
-            const lostSeq = ackNum + 1;
-            if (tcpState.inFlight.has(lostSeq)) {
-                const info = tcpState.inFlight.get(lostSeq);
-                clearTimeout(info.timeoutId);
-                tcpState.inFlight.delete(lostSeq);
-
-                if (info.packetObj.element && info.packetObj.element.parentNode) {
-                    info.packetObj.element.classList.add('lost');
-                    setTimeout(() => {
-                        if (info.packetObj.element.parentNode) info.packetObj.element.parentNode.removeChild(info.packetObj.element);
-                    }, 500);
-                }
-
-                log(`Fast Retransmit пакета #${lostSeq}`, 'timeout');
-
-                // Retransmit the lost packet
-                setTimeout(() => {
-                    if (isRunning && !isPaused) {
-                        const packetObj = createPacket(lostSeq, 'data');
-                        packets.push(packetObj);
-                        stats.sent++;
-                        document.getElementById('statSent').textContent = stats.sent;
-
-                        const flightInfo = { packetObj: packetObj, startTime: Date.now() };
-                        tcpState.inFlight.set(lostSeq, flightInfo);
-
-                        const timeoutId = setTimeout(() => {
-                            if (tcpState.inFlight.has(lostSeq)) handlePacketTimeout(lostSeq);
-                        }, config.timeout / speedMultiplier);
-                        flightInfo.timeoutId = timeoutId;
-
-                        log(`Переотправлен пакет #${lostSeq} (Fast Retransmit)`, 'sent');
-                        animatePacket(packetObj);
-                    }
-                }, 100 / speedMultiplier);
-            }
-            break;
-
-        case 'tahoe':
-            // Tahoe: 3 dup ACKs = same as timeout
-            tcpState.ssthresh = Math.max(Math.floor(tcpState.cwnd / 2), 2);
-            tcpState.cwnd = 1;
-            tcpState.phase = 'slow-start';
-            log(`[3× dupACK Tahoe] ssthresh: ${oldSsthresh.toFixed(2)} → ${tcpState.ssthresh.toFixed(2)}, cwnd: ${oldCwnd.toFixed(2)} → 1 (Slow Start)`, 'timeout');
-
-            // Go-Back-N retransmission
-            const tahoeRetransStart = tcpState.sendBase;
-            const tahoeRetransEnd = tcpState.nextSeqNum - 1;
-            log(`Go-Back-N: переотправка #${tahoeRetransStart}..#${tahoeRetransEnd}`, 'info');
-
-            tcpState.inFlight.forEach((info, key) => {
-                clearTimeout(info.timeoutId);
-                if (info.packetObj.element && info.packetObj.element.parentNode) {
-                    info.packetObj.element.classList.add('lost');
-                    setTimeout(() => { if (info.packetObj.element.parentNode) info.packetObj.element.parentNode.removeChild(info.packetObj.element); }, 500);
-                }
-            });
-            tcpState.inFlight.clear();
-            tcpState.nextSeqNum = tcpState.sendBase;
-            tcpState.acksInCurrentWindow = 0;
-            tcpState.dupAckCount = 0;
-
-            setTimeout(() => { if (isRunning && !isPaused) trySendNextPacket(); }, 100 / speedMultiplier);
-            break;
-
-        case 'cubic':
-        case 'bbr':
-        case 'classic':
-            // Treat as timeout for these protocols
-            handlePacketTimeout(ackNum + 1);
-            return;
-    }
-
-    stats.ssthreshHistory.push({ time: Date.now(), value: tcpState.ssthresh });
-    if (Math.floor(oldCwnd) !== Math.floor(tcpState.cwnd)) {
-        stats.windowHistory.push({ time: Date.now(), value: tcpState.cwnd });
-    }
-    updateWindowDisplay();
-}
-
-// ==================== SIMULATION CONTROL ====================
-let sendInterval;
-let cleanupInterval;
-
-function startSimulation() {
-    if (isRunning && !isPaused) return;
-    if (!isRunning) {
-        loadConfig();
-        resetState();
-        isRunning = true;
-    }
-    isPaused = false;
-    document.getElementById('btnStart').disabled = true;
-    document.getElementById('btnPause').disabled = false;
-    log('Симуляция запущена', 'info');
-
-    const interval = 1000 / config.bandwidth;
-    sendInterval = setInterval(() => {
-        if (!isPaused) trySendNextPacket();
-    }, interval / speedMultiplier);
-
-    cleanupInterval = setInterval(() => {
-        if (!isPaused) cleanupOldPackets();
-    }, 2000);
-}
-
-function pauseSimulation() {
-    if (!isRunning || isPaused) return;
-    isPaused = true;
-    document.getElementById('btnStart').disabled = false;
-    document.getElementById('btnStart').textContent = '▶ Продолжить';
-    document.getElementById('btnPause').disabled = true;
-    log('Симуляция приостановлена', 'info');
-}
-
-function resetSimulation() {
-    isRunning = false;
-    isPaused = false;
-    clearInterval(sendInterval);
-    clearInterval(cleanupInterval);
-
-    packets.forEach(p => {
-        if (p.element && p.element.parentNode) p.element.parentNode.removeChild(p.element);
-    });
-    packets = [];
-
-    resetState();
-    resetStats();
-
-    timelineContent.style.width = Math.max(timelineViewport.clientWidth + 2000, 3000) + 'px';
-    drawGrid(timelineContent.offsetWidth);
-    timelineViewport.scrollLeft = 0;
-
-    document.getElementById('btnStart').disabled = false;
-    document.getElementById('btnStart').textContent = '▶ Старт';
-    document.getElementById('btnPause').disabled = true;
-    log('Симуляция сброшена', 'info');
-}
-
-function resetState() {
-    tcpState = {
-        cwnd: config.sendWindow,
-        ssthresh: Math.max(config.sendWindow * 4, 64),
-        phase: 'slow-start',
-        dupAckCount: 0,
-        sendBase: 0,
-        nextSeqNum: 0,
-        expectedSeqNum: 0,
-        receivedBuffer: new Set(),
-        inFlight: new Map(),
-        acksInCurrentWindow: 0,
-        cubicWmax: 0,
-        cubicTimeOrigin: 0,
-    };
-    updateWindowDisplay();
-}
-
-function resetStats() {
-    stats = {
-        sent: 0, received: 0, ackSent: 0, ackReceived: 0,
-        lost: 0, ackLost: 0,
-        windowHistory: [{ time: Date.now(), value: config.sendWindow }],
-        ssthreshHistory: [{ time: Date.now(), value: Math.max(config.sendWindow * 4, 64) }]
-    };
-    document.getElementById('statSent').textContent = '0';
-    document.getElementById('statReceived').textContent = '0';
-    document.getElementById('statAckSent').textContent = '0';
-    document.getElementById('statAckReceived').textContent = '0';
-    document.getElementById('statLost').textContent = '0';
-}
-
-function cleanupOldPackets() {
-    const now = Date.now();
-    packets = packets.filter(p => {
-        if (p.arrived || p.lost) {
-            const age = now - p.startTime;
-            const isOffScreen = p.laneX < timelineViewport.scrollLeft - 200;
-            if (age > 3000 && isOffScreen) {
-                if (p.element && p.element.parentNode) p.element.parentNode.removeChild(p.element);
-                return false;
-            }
-        }
-        return true;
-    });
-}
-
-// ==================== SPEED CONTROL ====================
-document.getElementById('speedRange').addEventListener('input', (e) => {
-    speedMultiplier = parseFloat(e.target.value);
-    document.getElementById('speedValue').textContent = speedMultiplier.toFixed(1) + 'x';
+$("speedRange").addEventListener("input", (e) => {
+  speed = +e.target.value;
+  $("speedValue").textContent = speed.toFixed(1) + "×";
 });
 
-// ==================== API ====================
-function showAPI() { document.getElementById('apiModal').classList.add('active'); }
-function closeModal() { document.getElementById('apiModal').classList.remove('active'); }
+$("btnApi").addEventListener("click", () => $("apiModal").classList.add("visible"));
+$("btnApiClose").addEventListener("click", () => $("apiModal").classList.remove("visible"));
 
-window.api = {
-    getParameters: function() { return { success: true, data: config }; },
-    setParameters: function(params) {
-        const validProtocols = ['classic', 'tahoe', 'reno', 'cubic', 'bbr'];
-        if (params.protocol && !validProtocols.includes(params.protocol)) {
-            return { success: false, error: 'Invalid protocol', validValues: validProtocols };
-        }
-        for (let key in config) { if (params[key] !== undefined) config[key] = params[key]; }
-        document.getElementById('packetTime').value = config.packetTime;
-        document.getElementById('ackTime').value = config.ackTime;
-        document.getElementById('sendWindow').value = config.sendWindow;
-        document.getElementById('recvWindow').value = config.recvWindow;
-        document.getElementById('protocol').value = config.protocol;
-        document.getElementById('packetLoss').value = config.packetLoss;
-        document.getElementById('ackLoss').value = config.ackLoss;
-        document.getElementById('timeout').value = config.timeout;
-        document.getElementById('bandwidth').value = config.bandwidth;
-        return { success: true, data: config };
-    },
-    play: function(duration) {
-        resetSimulation();
-        startSimulation();
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                pauseSimulation();
-                resolve({
-                    success: true, duration: duration,
-                    statistics: {
-                        packetsSent: stats.sent, packetsReceived: stats.received,
-                        acksSent: stats.ackSent, acksReceived: stats.ackReceived,
-                        packetLossPercent: stats.sent > 0 ? ((stats.lost / stats.sent) * 100).toFixed(2) : 0,
-                        ackLossPercent: stats.ackSent > 0 ? ((stats.ackLost / stats.ackSent) * 100).toFixed(2) : 0,
-                        windowHistory: stats.windowHistory.map(w => ({ timestamp: w.time, value: parseFloat(w.value.toFixed(2)) })),
-                        ssthreshHistory: stats.ssthreshHistory.map(s => ({ timestamp: s.time, value: parseFloat(s.value.toFixed(2)) }))
-                    }
-                });
-            }, duration * 1000);
-        });
-    }
-};
+$("btnLog").addEventListener("click", () => $("logPanel").classList.toggle("open"));
 
-console.log('TCP Simulator API available');
+// manual scrolling disables auto-follow until re-enabled
+viewport.addEventListener("wheel", (e) => {
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+    e.preventDefault();
+    viewport.scrollLeft += e.deltaY;
+  }
+  autoScroll = false;
+  $("btnFollow").classList.remove("active");
+}, { passive: false });
 
-// ==================== INIT ====================
-window.addEventListener('resize', () => { drawGrid(timelineContent.offsetWidth); });
-init();
+let dragging = false, dragX = 0, dragScroll = 0;
+viewport.addEventListener("mousedown", (e) => {
+  if (e.target.closest(".packet")) return;
+  dragging = true;
+  dragX = e.pageX;
+  dragScroll = viewport.scrollLeft;
+  viewport.style.cursor = "grabbing";
+});
+viewport.addEventListener("mousemove", (e) => {
+  if (!dragging) return;
+  viewport.scrollLeft = dragScroll - (e.pageX - dragX);
+  autoScroll = false;
+  $("btnFollow").classList.remove("active");
+});
+["mouseup", "mouseleave"].forEach((ev) =>
+  viewport.addEventListener(ev, () => { dragging = false; viewport.style.cursor = "grab"; })
+);
+
+$("btnFollow").addEventListener("click", () => {
+  autoScroll = !autoScroll;
+  $("btnFollow").classList.toggle("active", autoScroll);
+});
+
+window.addEventListener("resize", drawGrid);
+
+// changing a parameter mid-run: rebuild from scratch (rules are deterministic)
+["packetTime", "ackTime", "sendWindow", "recvWindow", "protocol", "packetLoss",
+ "ackLoss", "timeout", "bandwidth", "retransmitMode", "seed"].forEach((id) => {
+  $(id).addEventListener("change", () => { if (!playing) reset(false); });
+});
+
+// ---------- go ----------
+reset(true);
+rafId = requestAnimationFrame(frame);
+
 </script>
 </body>
 </html>

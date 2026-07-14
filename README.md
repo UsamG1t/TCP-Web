@@ -6,8 +6,8 @@ trace** (instantly, in virtual time); the frontend plays that trace back as an
 animated time-sequence diagram, a sliding-window map, and a congestion-window
 chart.
 
-Live layout when deployed: the new UI is served at `/latest/`, the original
-single-file version at `/old`, and the REST API is reachable both through the
+Live layout when deployed: the trace player is served at `/latest/`, the interactive
+click-to-drop simulator at `/old`, and the REST API is reachable both through the
 reverse proxy at `/api/` and directly on port `5000`.
 
 ---
@@ -92,32 +92,45 @@ Two container images are built:
 
 ### Event-driven vs. real-time
 
-The **new** engine (`/api`, served to `/latest`) is a **discrete-event
-simulation**. It maintains a virtual clock and a priority queue of future events
-(`send`, `data arrival`, `ACK arrival`, `RTO`). It pops the earliest event,
-mutates state, schedules new events, and repeats until the virtual clock reaches
-the requested duration. A 30-second run is computed in a fraction of a second,
-because nothing waits on wall-clock time.
+Both frontends run the **same congestion-control rules**. They differ only in how
+the clock advances.
 
-By contrast, the **original** version (`/old`) advances in **real time**: its
-client-side animation uses actual timers, so a 30-second scenario takes 30 seconds
-to watch. (The first-generation backend prototype behaved the same way, using
-`time.sleep`.) Moving to a discrete-event model is what makes the new API instant,
-deterministic (seeded), and reproducible.
+The **backend engine** (`backend/engine`, reached through the API and used by
+`/latest`) is a **discrete-event simulation**. It keeps a virtual clock and a
+priority queue of future events (`send`, data arrival, ACK arrival, `RTO`). It
+pops the earliest event, mutates state, schedules new events, and repeats until
+the virtual clock reaches the requested duration. A 30-second run is computed in a
+fraction of a second, because nothing waits on wall-clock time. Runs are seeded and
+therefore reproducible, and because the engine is a pure function of
+`(config, seed, resume_state)` the backend keeps **no per-session state**.
 
-Because the engine is a pure function of `(config, seed, resume_state)`, the
-backend keeps **no per-session state**. To *continue* a run, the client sends back
-the `checkpoint` it received earlier — see
-[Continuing a run](#continuing-a-run-hybrid-mode).
+The **interactive page** (`legacy/tcp_simulator.html`, served at `/old`) is a
+JavaScript **port of that same engine** — same PRNG, same RTO estimator, same
+congestion-control strategies, same sender and receiver. The only difference is
+that its event queue is *paced*: events are released as a real clock advances,
+scaled by the speed slider. That is what makes the packets watchable in flight and
+lets a user **drop a packet by clicking it** — a manual drop simply flips the
+`lost` flag on an already scheduled arrival, so from TCP's point of view it is an
+ordinary loss, and duplicate ACKs, fast retransmit, or an RTO follow on their own.
+
+An earlier prototype advanced in real time on the server (using `time.sleep`), which
+made a 30-second `/play` request block for 30 seconds. The discrete-event model
+replaced it.
+
+> **Cross-validated.** Given the same configuration and seed, and with no manual
+> drops, the JavaScript engine produces an event trace **identical** to the Python
+> engine's — event for event, including timestamps. The two implementations are kept
+> in step deliberately: `/old` and `/latest` are two views of one model, not two
+> models.
 
 ### The three faces: `/old`, `/latest`, `/api`
 
 | Path        | What it serves                                            | Notes |
 |-------------|-----------------------------------------------------------|-------|
-| `/latest/`  | New Svelte trace player                                   | Built with `base=/latest/`, calls the API at `/api` |
-| `/old`      | Original self-contained `tcp_simulator.html`              | Client-side, real-time animation; kept for reference |
+| `/latest/`  | Svelte trace player                                       | Computes a trace via the API, then replays it: ladder diagram, sliding-window strip, cwnd chart, scrubbing |
+| `/old`      | Interactive single-file simulator                         | Runs the ported engine live in the browser; packets can be **dropped by clicking them** mid-flight. No build step, no API calls |
 | `/api/*`    | REST API through the nginx reverse proxy                  | Prefix `/api` is stripped before proxying |
-| `:5000`     | REST API exposed directly on the port                    | Same API, for curl / scripting |
+| `:5000`     | REST API exposed directly on the port                     | Same API, for curl / scripting |
 
 ---
 
@@ -281,7 +294,11 @@ frontend/                New UI (Svelte + Vite)
       LogPanel.svelte        Event log synced to the playhead
 
 legacy/
-  tcp_simulator.html     Original single-file simulator (served at /old)
+  tcp_simulator.html     Interactive simulator, served at /old. Self-contained:
+                         a JavaScript port of backend/engine (PRNG, RFC 6298 RTO,
+                         the four CC strategies, sender/receiver) plus a UI layer
+                         that paces the event queue against a real clock and draws
+                         the tape. No build step and no runtime dependencies.
 
 nginx/
   Dockerfile             Multi-stage: build Svelte, then nginx runtime
@@ -312,10 +329,13 @@ and a per-event state timeline (for the readouts, chart, and window strip).
 
 ## Sliding Window Protocols
 
-This section describes the algorithms as implemented in the **latest** engine,
-which is the authoritative one. Congestion control affects the **sender**; the
-**receiver** behaves the same across all four protocols and depends only on the
-retransmission mode.
+This section describes the algorithms as implemented in the simulation engine.
+There is only one set of rules: the Python engine (`backend/engine`) and its
+JavaScript port (`legacy/tcp_simulator.html`) implement the same behaviour and are
+verified to produce identical traces, so everything below applies equally to
+`/latest` and `/old`. Congestion control affects the **sender**; the **receiver**
+behaves the same across all four protocols and depends only on the retransmission
+mode.
 
 ### Common model
 
