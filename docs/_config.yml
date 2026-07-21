@@ -1,0 +1,26 @@
+title: TCP Sliding-Window Simulator
+description: Documentation for the TCP congestion-control simulator
+remote_theme: just-the-docs/just-the-docs
+
+# just-the-docs options
+search_enabled: true
+color_scheme: dark
+heading_anchors: true
+
+# Mermaid diagrams (works on GitHub Pages)
+mermaid:
+  version: "9.1.6"
+
+aux_links:
+  Project on GitHub:
+    - "https://github.com/UsamG1t/TCP-Web"
+
+# these live outside the site output
+exclude:
+  - _tools/
+  - Gemfile
+  - Gemfile.lock
+
+# GitHub Pages needs this plugin for remote_theme; it is whitelisted.
+plugins:
+  - jekyll-remote-theme
