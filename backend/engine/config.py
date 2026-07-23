@@ -1,31 +1,77 @@
-"""Simulation configuration: the Config dataclass plus a single source of truth
-for defaults / valid ranges. Both the /schema endpoint (which drives the frontend
-form) and validate_config() read from the same tables below.
+"""Simulation parameters: definitions, defaults, ranges and validation.
+
+This module is the single source of truth for what a simulation can be asked to
+do. The tables below feed three consumers at once, which is why they live in one
+place: the `/schema` endpoint publishes them so the frontend can build its form,
+`validate_config()` enforces them on every request, and `Config` carries the
+resulting values into the engine.
+
+Adding a numeric parameter is therefore a one-line change to `NUMERIC_PARAMS`
+plus a matching field on `Config`; the API schema and the input validation
+follow automatically.
 """
 
 from dataclasses import dataclass
 
 VALID_PROTOCOLS = ["classic", "tahoe", "reno", "cubic"]
-VALID_RETRANSMIT = ["gobackn", "selective"]
+"""Congestion-control algorithms the engine implements."""
 
-# name -> (default, min, max)
+VALID_RETRANSMIT = ["gobackn", "selective"]
+"""Retransmission strategies: resend the whole window, or only what was lost."""
+
 NUMERIC_PARAMS = {
-    "packetTime": (2500, 100, 10000),   # one-way data delay (ms)
-    "ackTime":    (1500,   50,  5000),   # one-way ACK delay (ms)
-    "sendWindow": (4,      1,    64),   # initial cwnd (segments)
-    "recvWindow": (8,      1,    64),   # receiver window (flow-control cap)
-    "packetLoss": (5,      0,    50),   # % chance a data segment is dropped
-    "ackLoss":    (2,      0,    50),   # % chance an ACK is dropped
-    "timeout":    (8000, 200, 20000),   # initial RTO (ms)
-    "bandwidth":  (10,     1,   100),   # bottleneck rate (segments/sec)
+    "packetTime": (2500, 100, 10000),
+    "ackTime":    (1500,  50,  5000),
+    "sendWindow": (4,      1,    64),
+    "recvWindow": (8,      1,    64),
+    "packetLoss": (5,      0,    50),
+    "ackLoss":    (2,      0,    50),
+    "timeout":    (8000, 200, 20000),
+    "bandwidth":  (10,     1,   100),
 }
+"""Numeric parameters as `name -> (default, minimum, maximum)`.
+
+- `packetTime` — one-way propagation delay for data segments, in milliseconds.
+- `ackTime` — one-way propagation delay for acknowledgements, in milliseconds.
+  Together with `packetTime` this sets the nominal round-trip time.
+- `sendWindow` — the sender's initial congestion window, in segments. For the
+  `classic` protocol it is also the final one, since that window never moves.
+- `recvWindow` — the receiver's advertised window, in segments. Acts as a hard
+  cap on the effective window (flow control), independent of congestion control.
+- `packetLoss` — probability, in percent, that any given data segment is lost.
+- `ackLoss` — probability, in percent, that any given acknowledgement is lost.
+- `timeout` — the *initial* retransmission timeout in milliseconds. The timer is
+  adaptive (see `engine.rto`), so this value only seeds it; it then converges
+  toward the path's measured round-trip time.
+- `bandwidth` — bottleneck rate in segments per second, which sets how closely
+  consecutive segments can be spaced on the wire.
+"""
 
 DURATION_MIN = 1
+"""Shortest simulation, in seconds of virtual time."""
+
 DURATION_MAX = 300
+"""Longest simulation, in seconds of virtual time. Bounds the size of a trace."""
 
 
 @dataclass
 class Config:
+    """One simulation's parameters, in the form the engine consumes.
+
+    Field meanings are documented on `NUMERIC_PARAMS`; the defaults here mirror
+    that table. Two additional fields select behaviour rather than magnitude:
+
+    - `protocol` — one of `VALID_PROTOCOLS`; picks the congestion-control
+      strategy.
+    - `retransmitMode` — one of `VALID_RETRANSMIT`. Under `gobackn` a timeout
+      rewinds the sender and the receiver discards anything out of order; under
+      `selective` only the missing segment is resent and the receiver buffers
+      what arrives early.
+
+    Instances are created from an already validated dictionary, so the class
+    itself performs no checking.
+    """
+
     packetTime: int = 2500
     ackTime: int = 1500
     sendWindow: int = 4
@@ -39,11 +85,24 @@ class Config:
 
     @property
     def serialization_ms(self) -> float:
+        """Milliseconds the bottleneck needs to put one segment on the wire.
+
+        This is the spacing between successive transmissions — the simulated
+        equivalent of a link's serialization delay — derived from `bandwidth`.
+        """
         return 1000.0 / max(1, self.bandwidth)
 
 
 def schema() -> dict:
-    """Metadata for the frontend to build its form and validate input."""
+    """Describe every parameter so a client can build and pre-validate a form.
+
+    Returned by `GET /schema`. The payload contains the numeric parameters with
+    their default, minimum and maximum, the list of protocols, the list of
+    retransmission modes, and the accepted range for `duration`.
+
+    Publishing the schema rather than hard-coding it in the frontend keeps the
+    two in step: changing a bound here immediately changes what the UI offers.
+    """
     return {
         "numeric": {
             name: {"default": d, "min": lo, "max": hi}
@@ -56,7 +115,22 @@ def schema() -> dict:
 
 
 def validate_config(raw: dict) -> dict:
-    """Return a full, defaulted, validated config dict. Raise ValueError on bad input."""
+    """Check a client-supplied configuration and fill in what it omitted.
+
+    Every field is optional: anything absent from `raw` takes its default, so a
+    request may specify only what it cares about. Values that are present are
+    checked for type and range. Booleans are rejected for numeric fields on
+    purpose — Python treats `True` as `1`, and silently accepting it would hide
+    a client bug.
+
+    - `raw` — the untrusted `config` object from a request body.
+
+    Returns a complete configuration dictionary suitable for `Config(**cfg)`.
+
+    Raises `ValueError` with a human-readable message if any value is of the
+    wrong type, out of range, or not a recognised protocol or retransmission
+    mode. The API layer turns that message into an HTTP 400 response.
+    """
     if not isinstance(raw, dict):
         raise ValueError("config must be an object")
 
