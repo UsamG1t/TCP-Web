@@ -1,5 +1,13 @@
 title: TCP Sliding-Window Simulator
 description: Documentation for the TCP congestion-control simulator
+
+# The site is a project page, served under /<repo>/ on github.io. Without a
+# baseurl every stylesheet and link would resolve against the domain root and
+# the site would render unstyled. Change both lines if the repository is
+# renamed; for a custom domain set baseurl to "".
+url: "https://usamg1t.github.io"
+baseurl: "/TCP-Web"
+
 remote_theme: just-the-docs/just-the-docs
 
 # just-the-docs options
@@ -15,12 +23,22 @@ aux_links:
   Project on GitHub:
     - "https://github.com/UsamG1t/TCP-Web"
 
-# these live outside the site output
+# Jekyll never merges a theme's own _config.yml, and that includes remote
+# themes, so the layout just-the-docs would otherwise set for us has to be
+# declared here. Without this every page renders as bare unstyled Markdown.
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+# Not part of the site output.
 exclude:
   - _tools/
-  - Gemfile
-  - Gemfile.lock
 
-# GitHub Pages needs this plugin for remote_theme; it is whitelisted.
+# Building through Actions rather than natively means plugins must be declared:
+#   jekyll-remote-theme — fetches the theme, which is not a local gem
+#   jekyll-include-cache — required by just-the-docs, which uses include_cached
 plugins:
   - jekyll-remote-theme
+  - jekyll-include-cache

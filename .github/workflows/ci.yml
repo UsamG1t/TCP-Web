@@ -1,0 +1,110 @@
+name: CI
+
+# Checks that run on every push and pull request. Four independent jobs, so a
+# failure points straight at the area that broke rather than at "the build".
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      # Checks the CUBIC implementation against the formulas in RFC 9438:
+      # the decrease factor, the timeout rules, the value of K, and the shape
+      # of the window curve.
+      - name: Verify CUBIC against RFC 9438
+        working-directory: backend
+        run: python3 test_cubic.py
+
+      - name: Exercise the REST API
+        run: python3 tests/api_smoke.py
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # The real check: if a component fails to compile, or an import is
+      # wrong, the Svelte compiler says so here rather than in the browser.
+      - name: Build the frontend
+        working-directory: frontend
+        run: npm run build
+
+  engine-parity:
+    name: Engine parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The project's central invariant: /old and /latest must simulate
+      # identically. This runs both engines over every protocol and both
+      # retransmission modes and compares the traces event by event.
+      - name: Compare the Python and JavaScript engines
+        run: python3 tests/engine_parity.py
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # README is assembled from the chapters in docs/info, and the code
+      # reference is extracted from the source. Both are committed, so both can
+      # go stale. Regenerating and diffing catches that.
+      - name: Check the generated documentation is up to date
+        run: |
+          python3 docs/_tools/gen_code_docs.py .
+          python3 docs/_tools/build_readme.py .
+          if ! git diff --quiet -- README.md docs/code; then
+            echo "::error::Generated documentation is out of date."
+            echo "Run these from the repository root and commit the result:"
+            echo "  python3 docs/_tools/gen_code_docs.py ."
+            echo "  python3 docs/_tools/build_readme.py ."
+            echo
+            echo "Differences found:"
+            git --no-pager diff --stat -- README.md docs/code
+            exit 1
+          fi
+          echo "Documentation matches the source."

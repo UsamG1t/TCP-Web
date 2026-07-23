@@ -1,0 +1,75 @@
+name: Documentation
+
+# Builds the Jekyll site in docs/ and publishes it to GitHub Pages.
+#
+# The site cannot be built by Pages natively, because the Code Reference pages
+# are generated from the source by a Python script and Pages' own build runs in
+# safe mode, where that is not possible. So the generator runs here first and
+# Jekyll is given a directory that is already complete.
+#
+# Generating on every deployment rather than trusting the committed pages means
+# the published reference always matches the code, even if someone forgot to
+# re-run the generator before pushing.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'docs/**'
+      - 'backend/**'
+      - 'frontend/src/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+# Required by the Pages deployment: id-token lets the deploy step prove the
+# artifact came from this workflow run.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and never cancel one that is already running.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Reads docstrings and JSDoc out of the source and writes docs/code/*.md.
+      # No dependencies beyond the standard library.
+      - name: Generate the code reference
+        run: python3 docs/_tools/gen_code_docs.py .
+
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v4
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
