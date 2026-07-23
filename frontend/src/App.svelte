@@ -1,3 +1,17 @@
+<!-- @component
+Root component: layout, and the only place that talks to the API.
+
+Owns the two things that cannot belong to any single view — the request
+lifecycle and the error state — and leaves everything else to the player store,
+which the child components read independently. That keeps the data flow
+one-directional: requests come up as events, results go down into the store, and
+the views follow the store.
+
+The three diagrams are stacked in a deliberate order. The sliding-window strip
+sits on top, in sequence-number space; below it the ladder and the window chart
+share one horizontal time axis, so a lost packet and the dip it causes line up
+vertically.
+-->
 <script>
   import { onMount } from "svelte";
   import { getSchema, runSimulation, continueSimulation } from "./lib/api.js";
@@ -11,12 +25,19 @@
   import Transport from "./components/Transport.svelte";
   import LogPanel from "./components/LogPanel.svelte";
 
+  /** Parameter metadata from the API, fetched once at start-up. */
   let schema = null;
+
+  /** Whether a simulation request is currently in flight. */
   let busy = false;
+
+  /** Message from the most recent failure, or `null`. */
   let error = null;
 
+  /** Whether a run exists that could be continued. */
   $: hasCheckpoint = $player.checkpoint != null;
 
+  // Fetch the schema before anything else: the form cannot render without it.
   onMount(async () => {
     try {
       schema = await getSchema();
@@ -25,6 +46,15 @@
     }
   });
 
+  /**
+   * Run a fresh simulation and hand the trace to the player.
+   *
+   * Replaces whatever was loaded and rewinds the clock, so the new run plays
+   * from the beginning.
+   *
+   * @param {CustomEvent} ev The `run` event from the configuration panel,
+   *   carrying `config`, `duration` and `seed`.
+   */
   async function handleRun(ev) {
     const { config, duration, seed } = ev.detail;
     busy = true; error = null;
@@ -38,6 +68,17 @@
     }
   }
 
+  /**
+   * Extend the current run and append the new events to the trace.
+   *
+   * The checkpoint held in the store is sent back as the resume state, which is
+   * what allows the server to continue without having kept anything itself. The
+   * configuration comes from the form as it stands now, so the continuation can
+   * differ from what came before it.
+   *
+   * @param {CustomEvent} ev The `continue` event from the configuration panel,
+   *   carrying `config` and `duration`.
+   */
   async function handleContinue(ev) {
     const { config, duration } = ev.detail;
     busy = true; error = null;

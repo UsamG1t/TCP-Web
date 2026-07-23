@@ -1,11 +1,29 @@
+<!-- @component
+Event log, synchronised with the playhead.
+
+The diagrams show what happened; this shows it in words, and is where a
+surprising moment gets pinned down — which duplicate acknowledgement was the
+third, exactly which rule moved the window. Only events at or before the
+playhead are listed, so the log rewinds along with everything else when
+scrubbing.
+
+Collapsed by default, since it is a detail view rather than something to watch
+continuously. The listing is capped at the most recent entries: a long run
+produces thousands of events, and rendering them all would cost more than it is
+worth.
+-->
 <script>
   import { player } from "../lib/player.js";
+
+  /** Whether the panel is expanded. */
   let open = false;
 
   $: s = $player;
-  // events up to the playhead, most recent last; cap for performance
+
+  /** Events up to the playhead, oldest first, capped for rendering cost. */
   $: visible = s.events.filter((e) => e.t <= s.clock).slice(-200);
 
+  /** Colour per event type, matching the palette used by the diagrams. */
   const COLOR = {
     packet_send: "var(--text)", fast_retransmit: "var(--rtx)",
     packet_deliver: "var(--ok)", packet_drop: "var(--loss)",
@@ -15,6 +33,17 @@
     phase_change: "var(--signal)",
   };
 
+  /**
+   * Render the informative part of an event as a short string.
+   *
+   * Events carry different payloads, so the field that matters is chosen by
+   * what is present: a sequence number for packets, an acknowledgement number
+   * (with a repeat count for duplicates) for ACKs, and the new value plus the
+   * rule that produced it for window changes.
+   *
+   * @param {Object} e An event from the trace.
+   * @returns {string} Text for the log row, empty if nothing worth showing.
+   */
   function detail(e) {
     if (e.seq != null) return `seq ${e.seq}`;
     if (e.ack != null) return `ack ${e.ack}${e.count ? ` ×${e.count}` : ""}`;

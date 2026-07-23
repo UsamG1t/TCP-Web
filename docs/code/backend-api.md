@@ -6,7 +6,7 @@ nav_order: 2
 
 # Backend · API
 
-*Generated from source by `docs/_tools/gen_code_docs.py`. Edit the docstrings in the code, then re-run the generator.*
+*Generated from source by `docs/_tools/gen_code_docs.py`. Edit the comments in the code, then re-run the generator.*
 
 ### `backend/app.py`
 

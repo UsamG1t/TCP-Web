@@ -1,15 +1,38 @@
+<!-- @component
+Instrument readout: the sender's state at the playhead.
+
+Answers "what is the connection doing right now?" in numbers, while the diagrams
+below answer it in pictures. Everything shown is the state at the current
+playback position, so scrubbing backwards rewinds the counters too — they are
+read from the precomputed timeline rather than accumulated as playback runs.
+
+The phase is colour-coded to match the diagrams, so a glance is enough to tell
+slow start from congestion avoidance from fast recovery.
+-->
 <script>
   import { player } from "../lib/player.js";
   import { stateAt } from "../lib/trace.js";
 
   $: s = $player;
+
+  /** State sample in force at the playhead, or `null` before a run is loaded. */
   $: cur = s.timeline ? stateAt(s.timeline.samples, s.clock) : null;
 
+  /** Colour per congestion-control phase, shared with the other views. */
   const phaseColor = {
     "slow-start": "var(--signal)",
     "congestion-avoidance": "var(--ok)",
     "fast-recovery": "var(--rtx)",
   };
+  /**
+   * Format a window value for display.
+   *
+   * Windows are fractional in congestion avoidance, so they are rounded to two
+   * decimals; missing values render as a dash rather than as `null`.
+   *
+   * @param {number|null|undefined} v Value in segments.
+   * @returns {string} Display string.
+   */
   const fmt = (v) => (v == null ? "—" : (Math.round(v * 100) / 100).toString());
 </script>
 

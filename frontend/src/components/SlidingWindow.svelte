@@ -1,13 +1,41 @@
+<!-- @component
+The sliding window in sequence-number space.
+
+Where the other two views plot time, this one plots sequence numbers: a strip of
+cells, one per segment, with a bracket marking the window. As acknowledgements
+arrive the bracket slides right — which is what the protocol family is named
+after, and what neither of the time-based views actually shows.
+
+Cells are colour-coded by state: acknowledged and behind the window, in flight,
+usable but not yet sent, or outside the window entirely. Two carets mark the
+pointers that define the window — `base`, the oldest unacknowledged segment, and
+`next`, the one that will go out next. The bracket's width is the effective
+window, so flow control is visible too: when the receiver's window is the
+smaller of the two, the bracket stops growing even as `cwnd` climbs.
+-->
 <script>
   import { player } from "../lib/player.js";
   import { stateAt } from "../lib/trace.js";
 
+  /** Measured component width in pixels, bound from the DOM. */
   let width = 800;
+
+  /** Horizontal padding in pixels. */
   const PAD = 12;
+
+  /** Strip height in pixels. */
   const H = 104;
+
+  /** Vertical position of the window bracket. */
   const bracketY = 20;
+
+  /** Top edge of the cell row. */
   const cellY = 34;
+
+  /** Cell height in pixels. */
   const cellH = 30;
+
+  /** Vertical position of the `base` and `next` carets. */
   const caretY = cellY + cellH + 6;
 
   $: s = $player;
@@ -17,12 +45,30 @@
   $: nCells = view ? view.cells.length : 1;
   $: cellW = Math.max(18, Math.min(46, (width - PAD * 2) / nCells));
 
-  // geometry (kept in script: {@const} isn't allowed as a direct child of <svg>)
+  // Geometry is computed here rather than in the markup because Svelte only
+  // permits {@const} as a direct child of a block, not of an element.
   $: bx0 = view ? xOf(view.sendBase, view.first, cellW) : 0;
   $: bx1 = view ? xOf(view.windowEnd, view.first, cellW) : 0;
   $: baseX = view ? xOf(view.sendBase, view.first, cellW) + cellW / 2 : 0;
   $: nextX = view ? xOf(view.nextSeq, view.first, cellW) + cellW / 2 : 0;
 
+  /**
+   * Work out which cells to draw and what state each one is in.
+   *
+   * Only a window's worth of sequence space is interesting, so the strip is
+   * cropped to the neighbourhood of the pointers, with a couple of cells of
+   * margin either side to make the sliding motion visible rather than abrupt.
+   *
+   * A cell's state follows from where it falls relative to the two pointers and
+   * the window edge: behind `base` it is acknowledged, between `base` and `next`
+   * it is in flight, up to the window edge it is available to send, and beyond
+   * that it is blocked until the window slides.
+   *
+   * @param {Object} c State sample at the playhead.
+   * @param {number} rw The receiver's advertised window, in segments.
+   * @returns {Object} Cells to render, the first sequence number shown, the two
+   *   pointers, the window's right edge and its effective size.
+   */
   function buildView(c, rw) {
     const sendBase = c.sendBase ?? 0;
     const nextSeq = c.nextSeq ?? 0;
@@ -42,6 +88,14 @@
     return { cells, first, sendBase, nextSeq, windowEnd, winSize };
   }
 
+  /**
+   * Map a sequence number to a horizontal pixel position.
+   *
+   * @param {number} seq Sequence number.
+   * @param {number} first First sequence number visible on the strip.
+   * @param {number} cw Cell width in pixels.
+   * @returns {number} The x coordinate of that cell's left edge.
+   */
   const xOf = (seq, first, cw) => PAD + (seq - first) * cw;
 
   const FILL = { acked: "var(--ok)", inflight: "var(--signal)", usable: "none", outside: "none" };

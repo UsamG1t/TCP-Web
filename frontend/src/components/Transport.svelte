@@ -1,7 +1,27 @@
+<!-- @component
+Transport controls: play, pause, restart, speed and scrubbing.
+
+A media-player bar for the trace. Because the whole simulation is computed up
+front, every control here is a cheap change to one number — the playback clock —
+rather than anything that recomputes the run. Scrubbing is therefore instant and
+works identically whether playback is running or paused.
+
+All state lives in the player store; this component only issues commands.
+-->
 <script>
   import { player } from "../lib/player.js";
+
+  /** Selectable playback rates, as multiples of real time. */
   const speeds = [0.5, 1, 2, 4];
+
   $: s = $player;
+
+  /**
+   * Format a virtual timestamp for the readout.
+   *
+   * @param {number} ms Virtual time in milliseconds.
+   * @returns {string} Seconds to one decimal place.
+   */
   const secs = (ms) => (ms / 1000).toFixed(1);
 </script>
 

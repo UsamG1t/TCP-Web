@@ -1,10 +1,35 @@
+<!-- @component
+Time-sequence (ladder) diagram — the signature view.
+
+Time runs left to right; the sender is the upper lane and the receiver the lower
+one. Every packet is a diagonal line whose slope *is* the propagation delay, so
+the geometry carries meaning: steeper links are faster, and the gap between a
+segment's departure and its acknowledgement is the round-trip time drawn to
+scale.
+
+Colour encodes outcome — delivered, lost, retransmitted — and acknowledgements
+return along fainter lines in the opposite direction. Lost packets stop at a
+cross partway across instead of reaching the far lane.
+
+Lines are drawn progressively: a packet is only extended as far as the playhead
+has travelled, which is what makes packets appear to fly rather than simply
+appear. The horizontal scale is shared with the window chart below, so a loss
+here lines up vertically with the drop in the congestion window it causes.
+-->
 <script>
   import { player } from "../lib/player.js";
   import { PAD_L, PAD_R, makeX, niceStep } from "../lib/layout.js";
 
+  /** Measured component width in pixels, bound from the DOM. */
   let width = 800;
+
+  /** Diagram height in pixels. */
   const H = 250;
+
+  /** Vertical centre of the sender's lane. */
   const senderY = 40;
+
+  /** Vertical centre of the receiver's lane. */
   const receiverY = H - 42;
 
   $: s = $player;
@@ -18,9 +43,25 @@
     return arr;
   })();
 
-  // clock and xScale are passed in explicitly so Svelte tracks them as
-  // dependencies of the {@const} expressions (otherwise flights wouldn't
-  // re-render as the clock advances).
+  /**
+   * Compute the visible portion of a data packet's diagonal.
+   *
+   * Interpolates between the two lanes by how far the packet has travelled at
+   * the current instant, so a line grows as the playhead advances and is
+   * complete once the packet has arrived.
+   *
+   * The clock and the scale are taken as arguments rather than read from the
+   * enclosing scope on purpose: Svelte derives the dependencies of a template
+   * expression from what that expression mentions, so a value used only inside
+   * a plain function would not be tracked, and the packets would sit frozen
+   * while the playhead moved.
+   *
+   * @param {Object} f A flight from `buildFlights`.
+   * @param {number} clock Current playback position, in virtual milliseconds.
+   * @param {function(number): number} xScale Time-to-pixel mapping.
+   * @returns {{x0: number, y0: number, x1: number, y1: number, done: boolean}}
+   *   Endpoints of the visible segment, and whether the journey has finished.
+   */
   function dataSeg(f, clock, xScale) {
     const total = Math.max(f.tEnd - f.tSend, 1e-6);
     const visEnd = Math.min(f.tEnd, clock);
@@ -31,6 +72,18 @@
       done: clock >= f.tEnd,
     };
   }
+  /**
+   * Compute the visible portion of an acknowledgement's diagonal.
+   *
+   * The mirror image of `dataSeg`: same interpolation, travelling from the
+   * receiver's lane back up to the sender's.
+   *
+   * @param {Object} f An acknowledgement flight from `buildFlights`.
+   * @param {number} clock Current playback position, in virtual milliseconds.
+   * @param {function(number): number} xScale Time-to-pixel mapping.
+   * @returns {{x0: number, y0: number, x1: number, y1: number, done: boolean}}
+   *   Endpoints of the visible segment, and whether it has arrived.
+   */
   function ackSeg(f, clock, xScale) {
     const total = Math.max(f.tEnd - f.tSend, 1e-6);
     const visEnd = Math.min(f.tEnd, clock);
@@ -41,6 +94,15 @@
       done: clock >= f.tEnd,
     };
   }
+  /**
+   * Pick the stroke colour for a data packet.
+   *
+   * Retransmissions are called out before outcome, since "this is a repeat" is
+   * the more informative fact when studying loss recovery.
+   *
+   * @param {Object} f A flight from `buildFlights`.
+   * @returns {string} A CSS custom property reference.
+   */
   const dataColor = (f) =>
     f.retransmit ? "var(--rtx)" : f.delivered === false ? "var(--loss)" : "var(--ok)";
 </script>

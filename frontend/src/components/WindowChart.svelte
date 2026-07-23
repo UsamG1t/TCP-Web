@@ -1,11 +1,31 @@
+<!-- @component
+Congestion window over time.
+
+Plots `cwnd` as a solid line and `ssthresh` as a dashed one, on the same
+horizontal scale as the ladder diagram directly above. That alignment is the
+point of the whole layout: the sawtooth in this chart and the lost packet that
+caused it sit in the same vertical column, which makes cause and effect legible
+at a glance.
+
+The shape of the curve is the protocol's signature — Tahoe's collapse to one
+segment, Reno's halving, CUBIC's flattening approach to the previous maximum
+followed by convex probing above it. A marker rides the curve at the playhead.
+-->
 <script>
   import { player } from "../lib/player.js";
   import { PAD_L, PAD_R, makeX, niceStep } from "../lib/layout.js";
   import { stateAt } from "../lib/trace.js";
 
+  /** Measured component width in pixels, bound from the DOM. */
   let width = 800;
+
+  /** Chart height in pixels. */
   const H = 172;
+
+  /** Top padding, leaving room above the peak of the curve. */
   const padTop = 14;
+
+  /** Bottom padding, reserved for the baseline. */
   const padBottom = 26;
 
   $: s = $player;
@@ -20,7 +40,22 @@
     return arr;
   })();
 
-  // x and y passed explicitly so the paths recompute when the scales change.
+  /**
+   * Convert a time series into an SVG path.
+   *
+   * Straight segments between samples, which is the honest representation: the
+   * window really does change in steps, at the moment an acknowledgement or a
+   * loss is processed, so smoothing would imply changes that never happened.
+   *
+   * The scales are parameters rather than closure references so that Svelte
+   * tracks them as dependencies and the paths are rebuilt when the component is
+   * resized or the trace grows.
+   *
+   * @param {Array<{t: number, value: number}>} series Points to plot.
+   * @param {function(number): number} xScale Time-to-pixel mapping.
+   * @param {function(number): number} yScale Value-to-pixel mapping.
+   * @returns {string} An SVG path, or an empty string for an empty series.
+   */
   function path(series, xScale, yScale) {
     if (!series || !series.length) return "";
     return series

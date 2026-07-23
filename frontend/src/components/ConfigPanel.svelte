@@ -1,11 +1,50 @@
+<!-- @component
+Parameter form and the run controls.
+
+Built entirely from the schema the backend publishes, rather than from a
+hard-coded list of fields: adding a parameter on the server makes it appear here,
+with the right default and the right bounds, without touching this file.
+
+Two actions, and the difference between them matters. **Run** computes a fresh
+trace from time zero. **Continue** extends the current one from where it ends,
+carrying the checkpoint back to the server — and because the parameters are read
+at that moment, changing the protocol or the loss rate first is what lets a run
+switch behaviour partway through.
+
+Both are emitted as events rather than handled here; the parent owns the requests.
+
+**Events dispatched**
+
+- `run` — detail `{ config, duration, seed }`
+- `continue` — detail `{ config, duration }`
+-->
 <script>
   import { createEventDispatcher } from "svelte";
+
+  /**
+   * Parameter metadata from `GET /schema`. The form stays hidden until it
+   * arrives, since defaults and bounds both come from it.
+   * @type {Object|null}
+   */
   export let schema = null;
+
+  /**
+   * Whether a request is currently in flight. Disables both buttons so a run
+   * cannot be started twice.
+   * @type {boolean}
+   */
   export let busy = false;
+
+  /**
+   * Whether a trace exists that could be continued. Controls whether the
+   * continue button is available.
+   * @type {boolean}
+   */
   export let hasCheckpoint = false;
 
   const dispatch = createEventDispatcher();
 
+  /** Human-readable labels for the numeric parameters, keyed by schema name. */
   const LABELS = {
     packetTime: "Задержка данных (мс)",
     ackTime: "Задержка ACK (мс)",
@@ -17,11 +56,17 @@
     bandwidth: "Пропускная (сег/с)",
   };
 
+  /** Current form values, populated from the schema on arrival. */
   let config = null;
+
+  /** Seconds of virtual time to simulate, or to add when continuing. */
   let duration = 30;
+
+  /** Seed for reproducible loss decisions. */
   let seed = 1;
 
-  // build config once schema arrives
+  // Populate the form from the schema, once. The guard on `config` keeps later
+  // schema updates from discarding what the user has typed.
   $: if (schema && !config) {
     const c = {};
     for (const [k, v] of Object.entries(schema.numeric)) c[k] = v.default;
@@ -31,7 +76,20 @@
     duration = schema.duration.default;
   }
 
+  /**
+   * Ask the parent to run a fresh simulation.
+   *
+   * The configuration is copied rather than passed by reference, so that
+   * editing the form afterwards cannot alter a request already under way.
+   */
   const run = () => dispatch("run", { config: { ...config }, duration, seed });
+
+  /**
+   * Ask the parent to extend the current run.
+   *
+   * No seed is sent: a continuation draws its randomness from the checkpoint,
+   * which carries the generator state forward.
+   */
   const cont = () => dispatch("continue", { config: { ...config }, duration });
 </script>
 
